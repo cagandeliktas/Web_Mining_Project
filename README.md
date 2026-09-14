@@ -1,6 +1,7 @@
 # Web_Mining_Project
 
 [![Tests](https://github.com/cagandeliktas/Web_Mining_Project/actions/workflows/tests.yml/badge.svg)](https://github.com/cagandeliktas/Web_Mining_Project/actions/workflows/tests.yml)
+[![API Tests](https://github.com/cagandeliktas/Web_Mining_Project/actions/workflows/api-tests.yml/badge.svg)](https://github.com/cagandeliktas/Web_Mining_Project/actions/workflows/api-tests.yml)
 
 A content-based neural network recommendation model consists of two parallel subnetworks—one for users and one for products—each designed to learn latent representations from their respective feature sets. These embeddings capture user preferences and product characteristics in a shared vector space, enabling the model to predict interactions such as ratings or affinities.
 
@@ -56,3 +57,59 @@ pytest -v
 
 A GitHub Actions workflow (`.github/workflows/tests.yml`) runs the same test suite
 on every push and pull request against `main`.
+
+## Serving the model (FastAPI)
+
+The trained two-tower model is served behind a small FastAPI app with a single
+endpoint:
+
+```bash
+pip install -r requirements-api.txt
+uvicorn app.main:app --reload
+```
+
+`POST /recommendations` takes a user's review history (optionally empty, for a
+cold-start/anonymous user) and returns the top-K products the model predicts
+they'd rate highest:
+
+```bash
+curl -X POST localhost:8000/recommendations \
+  -H "Content-Type: application/json" \
+  -d '{"reviews": [{"rating": 5, "is_recommended": true, "review_text": "Loved it!",
+                      "skin_tone": "medium", "skin_type": "oily",
+                      "eye_color": "brown", "hair_color": "black"}],
+       "top_k": 5}'
+```
+
+`app/inference.py` ports the notebook's `build_user_vector` logic (now
+`src/user_features.py`) and scores the user vector against every product in
+`artifacts/item_matrix.pkl`, a precomputed catalog feature matrix built by
+`scripts/build_item_matrix.py`.
+
+**A note on faithfulness, not just runnability:** the notebook's own "let's
+try recommending for a new user" cells (near the bottom of
+`NN_w_textFeatures.ipynb`) turned out to feed the model **unscaled** item
+features, even though the model was trained and evaluated on features scaled
+with `StandardScaler` (`artifacts/scaler_item.pkl`). This API deliberately
+does *not* reproduce that bug — it applies the same scaling the model was
+actually trained on, which is the technically correct approach, even though
+it means the API's recommendations differ from the notebook's cached example
+output. See `scripts/build_item_matrix.py`'s docstring for the details; this
+was caught by building a small script to reproduce the notebook's example
+predictions from scratch and finding they only matched once the scaling step
+was (incorrectly) skipped.
+
+Preprocessing artifacts (`artifacts/*.pkl`) and `artifacts/product_info.csv`
+are committed so the API is self-contained. The large raw review CSVs are
+not committed (see `.gitignore`) - they're only needed to regenerate
+`artifacts/item_matrix.pkl` via `scripts/build_item_matrix.py`, since that's
+the one thing that requires knowing which products actually have reviews:
+
+```bash
+python scripts/build_item_matrix.py --data-dir /path/to/sephora_datasets
+```
+
+Because the model needs TensorFlow (a large, slow dependency), its tests
+live in a separate suite (`tests/test_api_regression.py`, marked `api`) and
+a separate, slower workflow (`.github/workflows/api-tests.yml`), so the fast
+unit tests above stay fast on every push.
