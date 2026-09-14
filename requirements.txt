@@ -1,0 +1,7 @@
+# Runtime dependencies for the tested src/ package (preprocessing, metrics,
+# similarity). The notebooks themselves pull in additional packages
+# (tensorflow, keras-tuner, vaderSentiment, scikit-surprise, gensim, ...)
+# that are not needed to run the test suite.
+numpy
+pandas
+scikit-learn
