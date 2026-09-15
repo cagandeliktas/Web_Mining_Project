@@ -3,3 +3,4 @@ sephora_datasets/
 __pycache__/
 *.pyc
 .pytest_cache/
+.venv-api/
