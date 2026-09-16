@@ -39,6 +39,7 @@ from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 from src.item_features import build_item_feature_table
+from src.metrics import measures_at_k_nn, precision_recall_f1_nn_vectorized
 
 REVIEW_FILES = [
     "reviews_0-250.csv",
@@ -186,6 +187,16 @@ def main() -> None:
     parser.add_argument("--search", choices=["full", "fixed", "none"], default="fixed")
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--out-dir", default="artifacts_v2")
+    parser.add_argument(
+        "--leaky",
+        action="store_true",
+        help=(
+            "Deliberately reproduce the original leak (fit tfidf/svd/user "
+            "profiles on ALL rows, train+test, instead of train-only) - for "
+            "a controlled comparison isolating the leak as the only "
+            "variable. Never use this for a real model."
+        ),
+    )
     args = parser.parse_args()
 
     os.makedirs(args.out_dir, exist_ok=True)
@@ -203,21 +214,29 @@ def main() -> None:
     )
     reviews_train_rows = reviews.iloc[train_idx]
 
-    print("Fitting TF-IDF + SVD on TRAIN review text only...")
+    # fit_rows is the ONLY thing that changes between the leak-free and
+    # deliberately-leaky modes - same data loading, same split, same
+    # architecture, same everything else. Isolates the leak as the one
+    # variable under test.
+    fit_rows = reviews if args.leaky else reviews_train_rows
+    if args.leaky:
+        print("*** --leaky: fitting on ALL rows (train+test), reproducing the original bug ***")
+
+    print(f"Fitting TF-IDF + SVD on {'ALL' if args.leaky else 'TRAIN-only'} review text...")
     tfidf = TfidfVectorizer(max_features=5000, min_df=5, max_df=0.8)
-    tfidf.fit(reviews_train_rows["review_text"].fillna(""))
-    x_tfidf_train = tfidf.transform(reviews_train_rows["review_text"].fillna(""))
+    tfidf.fit(fit_rows["review_text"].fillna(""))
+    x_tfidf_train = tfidf.transform(fit_rows["review_text"].fillna(""))
     svd = TruncatedSVD(n_components=128, random_state=SEED)
     svd.fit(x_tfidf_train)
 
     analyzer = SentimentIntensityAnalyzer()
-    print("Building user profiles from TRAIN reviews only...")
-    user_features = build_user_features_from(reviews_train_rows, tfidf, svd, analyzer)
+    print(f"Building user profiles from {'ALL' if args.leaky else 'TRAIN-only'} reviews...")
+    user_features = build_user_features_from(fit_rows, tfidf, svd, analyzer)
     user_cols_full = user_features.drop(columns=["author_id"]).columns.tolist()
 
     text_cols = [c for c in user_features.columns if c.startswith("user_text_emb_")]
     defaults = {
-        "rec_avg": reviews_train_rows["is_recommended"].mean(),
+        "rec_avg": fit_rows["is_recommended"].mean(),
         "text_emb_mean": user_features[text_cols].mean().values,
     }
 
@@ -341,7 +360,15 @@ def main() -> None:
     y_test_orig = scaler_target.inverse_transform(y_test_scaled)
     rmse = float(np.sqrt(mean_squared_error(y_test_orig, y_pred)))
     mae = float(mean_absolute_error(y_test_orig, y_pred))
-    print(f"Leak-free test RMSE: {rmse:.4f}, MAE: {mae:.4f}")
+    prec, rec, f1, acc = precision_recall_f1_nn_vectorized(
+        user_test_ids, y_test_orig, y_pred, threshold=3.5
+    )
+    map_, p10, ndcg10 = measures_at_k_nn(
+        user_test_ids, y_test_orig, y_pred, k=10, threshold=3.5
+    )
+    print(f"Test RMSE: {rmse:.4f}, MAE: {mae:.4f}")
+    print(f"Precision: {prec:.4f}  Recall: {rec:.4f}  F1: {f1:.4f}  Accuracy: {acc:.4f}")
+    print(f"MAP: {map_:.4f}  Precision@10: {p10:.4f}  nDCG@10: {ndcg10:.4f}")
 
     print(f"Saving artifacts to {args.out_dir}/ ...")
     final_model.save(f"{args.out_dir}/final_two_tower_model_last.keras")
@@ -358,9 +385,17 @@ def main() -> None:
             {
                 "rmse": rmse,
                 "mae": mae,
+                "precision": float(prec),
+                "recall": float(rec),
+                "f1": float(f1),
+                "accuracy": float(acc),
+                "map": float(map_),
+                "precision_at_10": float(p10),
+                "ndcg_at_10": float(ndcg10),
                 "n_test": len(user_test),
                 "n_train": len(user_train),
                 "search": args.search,
+                "leaky": args.leaky,
                 "best_hp": dict(best_hp.values),
             },
             f,

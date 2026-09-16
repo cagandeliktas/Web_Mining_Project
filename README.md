@@ -205,3 +205,31 @@ and `NeuralNetworkApproach/final_two_tower_model_last.keras` were all
 regenerated from this retrain, the FastAPI service and the A/B test above
 both run against it, and both were re-verified against it (`pytest -v -m api`,
 `scripts/run_ab_comparison.py`) after the swap.
+
+### Verifying the RMSE jump is really the leak, not a bug
+
+A change this large deserves direct proof, not just an argument by analogy.
+`scripts/train_leakfree_model.py --leaky` deliberately reproduces the
+original bug (fits TF-IDF/SVD/user-profiles on *all* rows, train+test)
+inside the exact same leak-free pipeline - same code, same architecture,
+same hyperparameters, same data loading - so the leak is isolated as the
+only variable:
+
+| | Leaky (bug reproduced) | Leak-free (correct) |
+|---|---|---|
+| RMSE | 0.654 (`leak_verification_leaky.json`) | 1.093 (`leak_verification_leakfree.json`) |
+| MAE | 0.388 | 0.748 |
+| Accuracy | 0.927 | 0.814 |
+| F1 | 0.789 | 0.758 |
+| Precision@10 | 0.786 | 0.756 |
+| nDCG@10 | 0.819 | 0.796 |
+
+Flipping that one switch alone moves RMSE from 1.09 to 0.65 - closely
+matching the original notebook's reported 0.582 (the residual gap is
+architecture: this controlled test uses one fixed layer configuration
+rather than the original's own hyperparameter-search result). Notice
+accuracy and RMSE/MAE are hit hardest by the leak, while ranking metrics
+(F1, Precision@10, nDCG@10) move much less - consistent with the leak
+mechanism: baking a version of the true rating directly into a numeric
+input feature (`rating_avg`) helps nail the *exact value* far more than it
+helps get items in the *right relative order*.
