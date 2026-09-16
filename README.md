@@ -113,3 +113,23 @@ Because the model needs TensorFlow (a large, slow dependency), its tests
 live in a separate suite (`tests/test_api_regression.py`, marked `api`) and
 a separate, slower workflow (`.github/workflows/api-tests.yml`), so the fast
 unit tests above stay fast on every push.
+
+## Data warehouse (Snowflake + dbt)
+
+The raw Sephora CSVs are also loaded into a Snowflake database (`WEB_MINING`)
+and modeled into a small star schema with dbt:
+
+- **`WEB_MINING.RAW`** — the raw landing zone: `product_info.csv` loaded via
+  Snowsight's upload wizard, and the review CSVs loaded with
+  `scripts/load_reviews_to_snowflake.py` (too large for the browser
+  uploader — one file alone is 282MB).
+- **`dbt_project/`** — dbt models that clean and reshape the raw tables into:
+  - `stg_products` / `stg_reviews` (staging, 1:1 cleaning over each source)
+  - `dim_products`, `dim_users`, `fct_reviews` (the star schema — one row
+    per product, one row per reviewer, one row per review, with dbt tests
+    for uniqueness, not-null, and referential integrity between them)
+
+This dbt project runs as a **native dbt Project inside Snowsight** (no local
+dbt install), connected read-only to this GitHub repo — the model SQL lives
+here as real, version-controlled code, but execution happens entirely in
+Snowflake's UI.

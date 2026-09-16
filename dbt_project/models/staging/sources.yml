@@ -1,0 +1,16 @@
+version: 2
+
+sources:
+  - name: raw
+    database: WEB_MINING
+    schema: RAW
+    tables:
+      - name: product_info_raw
+        description: >
+          Raw product_info.csv, loaded as-is via Snowsight's file upload
+          wizard. One row per product.
+      - name: reviews_raw
+        description: >
+          Raw Sephora review CSVs (reviews_0-250.csv through
+          reviews_1250-end.csv), loaded as-is via
+          scripts/load_reviews_to_snowflake.py. One row per review.

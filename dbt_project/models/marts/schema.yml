@@ -1,0 +1,47 @@
+version: 2
+
+models:
+  - name: dim_products
+    description: One row per product, deduplicated from the raw product catalog.
+    columns:
+      - name: product_id
+        description: Primary key.
+        tests:
+          - unique
+          - not_null
+
+  - name: dim_users
+    description: >
+      One row per reviewer, with their most recently self-reported
+      demographic profile and aggregated review behavior.
+    columns:
+      - name: author_id
+        description: Primary key.
+        tests:
+          - unique
+          - not_null
+
+  - name: fct_reviews
+    description: One row per review. Grain matches the raw reviews data.
+    columns:
+      - name: review_id
+        description: Surrogate key (see model SQL for how it's built).
+        tests:
+          - unique
+          - not_null
+      - name: product_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_products')
+              field: product_id
+      - name: author_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_users')
+              field: author_id
+      - name: rating
+        tests:
+          - accepted_values:
+              values: [1, 2, 3, 4, 5]
