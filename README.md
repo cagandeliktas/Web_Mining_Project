@@ -157,18 +157,51 @@ python scripts/run_ab_comparison.py --data-dir /path/to/sephora_datasets
 ```
 
 **Result** (`ab_test_results.json`, n=1,000): KNNWithMeans significantly
-outperformed the two-tower NN — mean absolute error 0.644 vs. 0.833
-(paired t-test p ≈ 4×10⁻¹², Wilcoxon signed-rank p ≈ 9×10⁻¹³).
+outperformed the two-tower NN — mean absolute error 0.644 vs. 0.837
+(paired t-test p ≈ 1×10⁻¹², Wilcoxon signed-rank p ≈ 1×10⁻¹³).
 
-This is a genuine, not-hoped-for result, and worth being upfront about why:
-the two-tower model's own training setup (`user_features_ordered` in the
-notebook) built each user's feature vector from *all* of their reviews,
-train and test rows alike — a leakage the notebook's originally-reported
-metrics benefited from. This evaluation deliberately closes that leak
-(`build_user_vector` only ever sees the held-out user's *other* reviews),
-and for users with few reviews that leaves a fairly sparse history to build
-a vector from. KNNWithMeans's item-based similarity, by contrast, stays
-robust even with just one other rating to lean on. In short: the neural
-model's reported advantage was partly an artifact of evaluating it on data
-its own features had already partially seen — a fair, leak-free comparison
-tells a different story.
+This is a genuine, not-hoped-for result. The two-tower model's *own training
+setup* had the same class of leak this evaluation was designed to avoid —
+see the next section for the full fix and the retrained model this
+comparison now actually runs against.
+
+## Fixing the leak at its source: retraining the two-tower model
+
+The A/B test above was built to be leak-free on its own terms, but that just
+exposed a deeper problem: the leak wasn't only in how the *original* NN got
+evaluated — it was baked into how it was *trained*. `user_features_ordered`
+in the notebook built each user's feature vector (rating averages, TF-IDF/SVD
+text embedding, sentiment, demographics) from **all** of that user's reviews,
+*then* split rows into train/test — so a user's test-row profile included
+that same test review's own rating and text. TF-IDF and SVD were also fit on
+the full corpus, including test-set review text.
+
+`NeuralNetworkApproach/NN_w_textFeatures.ipynb` now has a new
+**"2. Correction: leak-free retraining"** section (appended after the
+original, untouched cells) that splits review rows into train/test *first*,
+fits TF-IDF/SVD/scalers on the train portion only, and builds every user's
+profile from train-side reviews only — the same discipline `build_user_vector`
+already uses at serving time, now applied at training time too. Running the
+full Hyperband search this notebook section describes is realistically a
+~60 minute job (not the many hours it looks like on paper — the model itself
+is small; most of the cost is one-time feature-engineering setup), so the
+actual production model was produced by running the equivalent background
+script instead of tying up an interactive kernel:
+
+```bash
+pip install -r requirements-train.txt
+python scripts/train_leakfree_model.py --data-dir /path/to/sephora_datasets --search full
+```
+
+**Result:** the original notebook reported a test RMSE of **0.582** (MAE
+0.316) on its own (leaky) split. Retrained leak-free, with a full 90-trial
+Hyperband search over the corrected data: test RMSE **1.087** (MAE 0.730) —
+roughly **double** the error. That gap *is* the leak: closing it doesn't
+just change an evaluation number, it reveals the model was never actually
+that good at predicting a genuinely unseen review.
+
+This is now the production model — `artifacts/*.pkl`, `artifacts/item_matrix.pkl`,
+and `NeuralNetworkApproach/final_two_tower_model_last.keras` were all
+regenerated from this retrain, the FastAPI service and the A/B test above
+both run against it, and both were re-verified against it (`pytest -v -m api`,
+`scripts/run_ab_comparison.py`) after the swap.

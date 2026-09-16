@@ -13,6 +13,7 @@ on the train portion only, and builds every user's profile from their
 train-side reviews only - a test row's profile has never seen that row.
 
 Usage:
+    pip install -r requirements-train.txt
     python scripts/train_leakfree_model.py --data-dir /path/to/sephora_datasets \
         [--sample-frac 1.0] [--search full|fixed] [--out-dir artifacts_v2]
 """
