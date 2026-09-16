@@ -136,7 +136,7 @@ Snowflake's UI.
 
 ## A/B test: classical CF vs. the two-tower NN
 
-`scripts/run_ab_test.py` compares `Basic_Recommender_System.ipynb`'s best
+`scripts/run_ab_comparison.py` compares `Basic_Recommender_System.ipynb`'s best
 classical baseline (KNNWithMeans, item-based Pearson similarity — variant A)
 against the two-tower neural network (variant B) with a proper paired
 significance test, not just eyeballing two separate metrics.
@@ -153,7 +153,7 @@ samples.
 
 ```bash
 pip install -r requirements-ab.txt
-python scripts/run_ab_test.py --data-dir /path/to/sephora_datasets
+python scripts/run_ab_comparison.py --data-dir /path/to/sephora_datasets
 ```
 
 **Result** (`ab_test_results.json`, n=1,000): KNNWithMeans significantly
