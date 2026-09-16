@@ -24,7 +24,7 @@ behavior as (
         author_id,
         count(*)                                as review_count,
         avg(rating)                              as avg_rating_given,
-        avg(iff(is_recommended, 1, 0))           as recommend_ratio,
+        avg(is_recommended)                      as recommend_ratio,
         avg(helpfulness)                         as avg_helpfulness,
         min(submission_time)                     as first_review_at,
         max(submission_time)                     as last_review_at
