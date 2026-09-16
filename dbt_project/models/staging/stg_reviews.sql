@@ -5,6 +5,14 @@ with source as (
 -- author_id is occasionally corrupted (letters mixed into what should be a
 -- numeric id) - same data-quality rule already validated in the two-tower
 -- notebook's df_reviews_final construction and scripts/build_item_matrix.py.
+-- Some rows are exact duplicates of another row (already known: the
+-- two-tower notebook found ~10,468 duplicated review rows in this same
+-- dataset). Collapsing them here keeps fct_reviews at one row per
+-- distinct review event.
+deduped as (
+    select distinct * from source
+),
+
 cleaned as (
     select
         author_id,
@@ -22,7 +30,7 @@ cleaned as (
         skin_type,
         eye_color,
         hair_color
-    from source
+    from deduped
     where not regexp_like(author_id, '.*[a-zA-Z].*')
 )
 
