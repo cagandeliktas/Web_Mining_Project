@@ -5,12 +5,19 @@ with source as (
 -- author_id is occasionally corrupted (letters mixed into what should be a
 -- numeric id) - same data-quality rule already validated in the two-tower
 -- notebook's df_reviews_final construction and scripts/build_item_matrix.py.
--- Some rows are exact duplicates of another row (already known: the
--- two-tower notebook found ~10,468 duplicated review rows in this same
--- dataset). Collapsing them here keeps fct_reviews at one row per
--- distinct review event.
+--
+-- 387 rows agree on (author_id, product_id, submission_time, review_text)
+-- but differ in other fields - not exact duplicates (SELECT DISTINCT
+-- doesn't touch them), most likely the same review scraped twice with
+-- updated feedback counts. Keep one row per that key, preferring whichever
+-- has the most feedback recorded (the more "complete" snapshot).
 deduped as (
-    select distinct * from source
+    select *
+    from source
+    qualify row_number() over (
+        partition by author_id, product_id, submission_time, review_text
+        order by total_feedback_count desc nulls last
+    ) = 1
 ),
 
 cleaned as (
