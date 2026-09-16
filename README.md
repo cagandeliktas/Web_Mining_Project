@@ -133,3 +133,42 @@ This dbt project runs as a **native dbt Project inside Snowsight** (no local
 dbt install), connected read-only to this GitHub repo — the model SQL lives
 here as real, version-controlled code, but execution happens entirely in
 Snowflake's UI.
+
+## A/B test: classical CF vs. the two-tower NN
+
+`scripts/run_ab_test.py` compares `Basic_Recommender_System.ipynb`'s best
+classical baseline (KNNWithMeans, item-based Pearson similarity — variant A)
+against the two-tower neural network (variant B) with a proper paired
+significance test, not just eyeballing two separate metrics.
+
+**Methodology:** a leave-one-out evaluation. For every user with at least 2
+ratings, one (product, rating) pair is held out and predicted from
+everything else that user rated — variant A retrains on the same held-out
+split, and variant B builds each user's vector from their remaining reviews
+via `src/user_features.py`'s `build_user_vector` (the same function the
+FastAPI service uses for a real user). Both variants are scored on the
+*exact same* 1,000 held-out instances, which is what makes a paired test
+(`src/ab_testing.py`) meaningful rather than comparing two unrelated
+samples.
+
+```bash
+pip install -r requirements-ab.txt
+python scripts/run_ab_test.py --data-dir /path/to/sephora_datasets
+```
+
+**Result** (`ab_test_results.json`, n=1,000): KNNWithMeans significantly
+outperformed the two-tower NN — mean absolute error 0.644 vs. 0.833
+(paired t-test p ≈ 4×10⁻¹², Wilcoxon signed-rank p ≈ 9×10⁻¹³).
+
+This is a genuine, not-hoped-for result, and worth being upfront about why:
+the two-tower model's own training setup (`user_features_ordered` in the
+notebook) built each user's feature vector from *all* of their reviews,
+train and test rows alike — a leakage the notebook's originally-reported
+metrics benefited from. This evaluation deliberately closes that leak
+(`build_user_vector` only ever sees the held-out user's *other* reviews),
+and for users with few reviews that leaves a fairly sparse history to build
+a vector from. KNNWithMeans's item-based similarity, by contrast, stays
+robust even with just one other rating to lean on. In short: the neural
+model's reported advantage was partly an artifact of evaluating it on data
+its own features had already partially seen — a fair, leak-free comparison
+tells a different story.

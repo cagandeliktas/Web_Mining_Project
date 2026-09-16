@@ -1,0 +1,12 @@
+{
+  "n": 1000,
+  "mean_error_a": 0.6443423776207049,
+  "mean_error_b": 0.8328548222780228,
+  "mean_diff": -0.1885124446573178,
+  "ttest_statistic": -7.017806018401416,
+  "ttest_pvalue": 4.154566357778528e-12,
+  "wilcoxon_statistic": 184915.0,
+  "wilcoxon_pvalue": 8.569281120240234e-13,
+  "significant_at_alpha": true,
+  "better_variant": "a"
+}
