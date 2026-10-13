@@ -1,20 +1,12 @@
-"""Retrain the two-tower model on a leak-free split.
+"""Train the two-tower recommender (script version of NN_w_textFeatures.ipynb).
 
-The original notebook (NeuralNetworkApproach/NN_w_textFeatures.ipynb) built
-each user's feature profile (numeric aggregates, sentiment, demographics,
-TF-IDF/SVD text embedding) from ALL of that user's reviews, THEN split rows
-into train/test. That means a user's test-row profile included that same
-test review's own rating/text/sentiment - the model could partly see the
-answer baked into its own input. The TF-IDF vocabulary and SVD components
-were also fit on the full corpus, including test-set review text.
-
-This script splits at the review-row level FIRST, fits TF-IDF/SVD/scalers
-on the train portion only, and builds every user's profile from their
-train-side reviews only - a test row's profile has never seen that row.
+Splits at the review-row level first, fits TF-IDF/SVD/scalers on the train
+portion only, and builds every user's profile from their train-side reviews
+only - a test row's profile has never seen that row.
 
 Usage:
     pip install -r requirements-train.txt
-    python scripts/train_leakfree_model.py --data-dir /path/to/sephora_datasets \
+    python scripts/train_model.py --data-dir /path/to/sephora_datasets \
         [--sample-frac 1.0] [--search full|fixed] [--out-dir artifacts_v2]
 """
 
@@ -187,16 +179,6 @@ def main() -> None:
     parser.add_argument("--search", choices=["full", "fixed", "none"], default="fixed")
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--out-dir", default="artifacts_v2")
-    parser.add_argument(
-        "--leaky",
-        action="store_true",
-        help=(
-            "Deliberately reproduce the original leak (fit tfidf/svd/user "
-            "profiles on ALL rows, train+test, instead of train-only) - for "
-            "a controlled comparison isolating the leak as the only "
-            "variable. Never use this for a real model."
-        ),
-    )
     args = parser.parse_args()
 
     os.makedirs(args.out_dir, exist_ok=True)
@@ -214,15 +196,9 @@ def main() -> None:
     )
     reviews_train_rows = reviews.iloc[train_idx]
 
-    # fit_rows is the ONLY thing that changes between the leak-free and
-    # deliberately-leaky modes - same data loading, same split, same
-    # architecture, same everything else. Isolates the leak as the one
-    # variable under test.
-    fit_rows = reviews if args.leaky else reviews_train_rows
-    if args.leaky:
-        print("*** --leaky: fitting on ALL rows (train+test), reproducing the original bug ***")
+    fit_rows = reviews_train_rows
 
-    print(f"Fitting TF-IDF + SVD on {'ALL' if args.leaky else 'TRAIN-only'} review text...")
+    print("Fitting TF-IDF + SVD on TRAIN-only review text...")
     tfidf = TfidfVectorizer(max_features=5000, min_df=5, max_df=0.8)
     tfidf.fit(fit_rows["review_text"].fillna(""))
     x_tfidf_train = tfidf.transform(fit_rows["review_text"].fillna(""))
@@ -230,7 +206,7 @@ def main() -> None:
     svd.fit(x_tfidf_train)
 
     analyzer = SentimentIntensityAnalyzer()
-    print(f"Building user profiles from {'ALL' if args.leaky else 'TRAIN-only'} reviews...")
+    print("Building user profiles from TRAIN-only reviews...")
     user_features = build_user_features_from(fit_rows, tfidf, svd, analyzer)
     user_cols_full = user_features.drop(columns=["author_id"]).columns.tolist()
 
@@ -240,7 +216,7 @@ def main() -> None:
         "text_emb_mean": user_features[text_cols].mean().values,
     }
 
-    print("Building item features (product-level, no row-split leakage)...")
+    print("Building item features (product-level)...")
     pro_inf = pd.read_csv(args.product_info)
     item_table = build_item_feature_table(pro_inf)
 
@@ -315,7 +291,7 @@ def main() -> None:
             max_epochs=args.epochs,
             factor=3,
             directory=f"{args.out_dir}/kt_tuner",
-            project_name="two_tower_leakfree",
+            project_name="two_tower_hb",
             overwrite=True,
         )
         t_search = time.time()
@@ -354,7 +330,7 @@ def main() -> None:
     )
     print(f"Final fit took {time.time() - t_fit:.1f}s")
 
-    print("Evaluating on the untouched leak-free test split...")
+    print("Evaluating on the untouched test split...")
     y_pred_scaled = final_model.predict([user_test, item_test], verbose=0)
     y_pred = scaler_target.inverse_transform(y_pred_scaled)
     y_test_orig = scaler_target.inverse_transform(y_test_scaled)
@@ -395,7 +371,6 @@ def main() -> None:
                 "n_test": len(user_test),
                 "n_train": len(user_train),
                 "search": args.search,
-                "leaky": args.leaky,
                 "best_hp": dict(best_hp.values),
             },
             f,
