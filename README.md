@@ -160,76 +160,26 @@ python scripts/run_ab_comparison.py --data-dir /path/to/sephora_datasets
 outperformed the two-tower NN — mean absolute error 0.644 vs. 0.837
 (paired t-test p ≈ 1×10⁻¹², Wilcoxon signed-rank p ≈ 1×10⁻¹³).
 
-This is a genuine, not-hoped-for result. The two-tower model's *own training
-setup* had the same class of leak this evaluation was designed to avoid —
-see the next section for the full fix and the retrained model this
-comparison now actually runs against.
+This is a genuine, not-hoped-for result: the simple classical baseline beats the
+neural model on held-out ratings.
 
-## Fixing the leak at its source: retraining the two-tower model
+## Training the two-tower model
 
-The A/B test above was built to be leak-free on its own terms, but that just
-exposed a deeper problem: the leak wasn't only in how the *original* NN got
-evaluated — it was baked into how it was *trained*. `user_features_ordered`
-in the notebook built each user's feature vector (rating averages, TF-IDF/SVD
-text embedding, sentiment, demographics) from **all** of that user's reviews,
-*then* split rows into train/test — so a user's test-row profile included
-that same test review's own rating and text. TF-IDF and SVD were also fit on
-the full corpus, including test-set review text.
-
-`NeuralNetworkApproach/NN_w_textFeatures.ipynb` now has a new
-**"2. Correction: leak-free retraining"** section (appended after the
-original, untouched cells) that splits review rows into train/test *first*,
-fits TF-IDF/SVD/scalers on the train portion only, and builds every user's
-profile from train-side reviews only — the same discipline `build_user_vector`
-already uses at serving time, now applied at training time too. Running the
-full Hyperband search this notebook section describes is realistically a
-~60 minute job (not the many hours it looks like on paper — the model itself
-is small; most of the cost is one-time feature-engineering setup), so the
-actual production model was produced by running the equivalent background
-script instead of tying up an interactive kernel:
+`NeuralNetworkApproach/NN_w_textFeatures.ipynb` splits review rows into
+train/test first, fits TF-IDF/SVD/scalers on the train portion only, and builds
+every user's profile from their train-side reviews only - the same procedure
+`build_user_vector` uses at serving time. The full Hyperband search is
+realistically a ~60 minute job (most of the cost is one-time feature-engineering
+setup), so the production model was produced with the equivalent background
+script instead of an interactive kernel:
 
 ```bash
 pip install -r requirements-train.txt
-python scripts/train_leakfree_model.py --data-dir /path/to/sephora_datasets --search full
+python scripts/train_model.py --data-dir /path/to/sephora_datasets --search full
 ```
 
-**Result:** the original notebook reported a test RMSE of **0.582** (MAE
-0.316) on its own (leaky) split. Retrained leak-free, with a full 90-trial
-Hyperband search over the corrected data: test RMSE **1.087** (MAE 0.730) —
-roughly **double** the error. That gap *is* the leak: closing it doesn't
-just change an evaluation number, it reveals the model was never actually
-that good at predicting a genuinely unseen review.
+**Result** (full 90-trial Hyperband search): test RMSE **1.087**, MAE **0.730**.
 
-This is now the production model — `artifacts/*.pkl`, `artifacts/item_matrix.pkl`,
-and `NeuralNetworkApproach/final_two_tower_model_last.keras` were all
-regenerated from this retrain, the FastAPI service and the A/B test above
-both run against it, and both were re-verified against it (`pytest -v -m api`,
-`scripts/run_ab_comparison.py`) after the swap.
-
-### Verifying the RMSE jump is really the leak, not a bug
-
-A change this large deserves direct proof, not just an argument by analogy.
-`scripts/train_leakfree_model.py --leaky` deliberately reproduces the
-original bug (fits TF-IDF/SVD/user-profiles on *all* rows, train+test)
-inside the exact same leak-free pipeline - same code, same architecture,
-same hyperparameters, same data loading - so the leak is isolated as the
-only variable:
-
-| | Leaky (bug reproduced) | Leak-free (correct) |
-|---|---|---|
-| RMSE | 0.654 (`leak_verification_leaky.json`) | 1.093 (`leak_verification_leakfree.json`) |
-| MAE | 0.388 | 0.748 |
-| Accuracy | 0.927 | 0.814 |
-| F1 | 0.789 | 0.758 |
-| Precision@10 | 0.786 | 0.756 |
-| nDCG@10 | 0.819 | 0.796 |
-
-Flipping that one switch alone moves RMSE from 1.09 to 0.65 - closely
-matching the original notebook's reported 0.582 (the residual gap is
-architecture: this controlled test uses one fixed layer configuration
-rather than the original's own hyperparameter-search result). Notice
-accuracy and RMSE/MAE are hit hardest by the leak, while ranking metrics
-(F1, Precision@10, nDCG@10) move much less - consistent with the leak
-mechanism: baking a version of the true rating directly into a numeric
-input feature (`rating_avg`) helps nail the *exact value* far more than it
-helps get items in the *right relative order*.
+The resulting `artifacts/*.pkl`, `artifacts/item_matrix.pkl`, and
+`NeuralNetworkApproach/final_two_tower_model_last.keras` are what the FastAPI
+service and the A/B test above run against.
