@@ -1,0 +1,42 @@
+# Single source of truth for the PyTorch pipeline. The notebook and the
+# training CLI both read this file; nothing below is hard-coded elsewhere.
+seed: 1
+
+data:
+  dir: sephora_datasets            # raw Kaggle CSVs (gitignored)
+  product_info: sephora_datasets/product_info.csv
+  cache_dir: data_cache            # cleaned parquet, gitignored
+
+split:
+  # Global temporal split on submission_time: oldest -> train, newest -> test.
+  method: temporal
+  val_frac: 0.10
+  test_frac: 0.10
+
+features:
+  tfidf_max_features: 5000
+  tfidf_min_df: 5
+  tfidf_max_df: 0.8
+  svd_components: 64
+  item_shrinkage: 10               # pseudo-count pulling an item's mean toward the train mean
+
+model:
+  embed_dim: 32
+  hidden: [256, 128]
+  dropout: 0.1
+  use_biases: true                 # y_hat = mu + b_u + b_i + <u, v>
+  id_dropout: 0.1                  # P(send a user/item id to the cold slot) while training
+
+train:
+  batch_size: 1024
+  epochs: 30
+  lr: 0.001
+  weight_decay: 0.0001
+  patience: 3
+  bias_reg: 5.0                    # Koren-style lambda on b_u, b_i (spread over each id's rows)
+  loss: mse                        # mse | huber
+  device: auto                     # auto | cpu | mps | cuda
+
+eval:
+  rating_threshold: 4.0            # "liked" cut-off for ranking metrics
+  top_k: [5, 10, 20]

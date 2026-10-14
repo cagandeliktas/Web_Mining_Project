@@ -8,3 +8,9 @@ __pycache__/
 dbt_project/target/
 dbt_project/dbt_packages/
 dbt_project/logs/
+
+.venv/
+data_cache/
+runs/
+.ipynb_checkpoints/
+NeuralNetworkApproach/kt_tuner_v2/
