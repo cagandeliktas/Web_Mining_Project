@@ -103,6 +103,7 @@ src/train.py                training loop (AdamW, bias shrinkage, id dropout, va
 src/baselines.py            mean / item / user / bias / as-of / item-kNN baselines
 src/evaluate.py, ranking.py rating metrics by history bucket; full-catalog ranking
 src/benchmark.py            run_benchmark: every method on val/test
+src/ab_testing.py           paired tests + user-clustered bootstrap between two predictors
 src/serving/                bundle export, request-time features, Recommender, FastAPI app
 scripts/                    thin CLIs over the above
 notebooks/                  calls src/ only (a test fails if a notebook defines functions)
@@ -110,6 +111,34 @@ notebooks/                  calls src/ only (a test fails if a notebook defines 
 
 Run the tests with `pytest -v`. CI (`.github/workflows/tests.yml`) installs the CPU build of torch and runs the same
 suite on every push and pull request against `main`.
+
+## Is the two-tower really better? (paired tests)
+
+`python -m scripts.compare_methods` compares the model with every baseline on the *same* test rows. Reviews by one user
+are correlated, so the evidence is a **user-clustered bootstrap** (whole users are resampled); row-level paired t and
+Wilcoxon tests are also computed (`results/ab_test.json`) but overstate certainty. Positive delta = the two-tower is better.
+
+Two-tower vs baselines, test split (108,910 reviews, 50,522 users). delta = baseline - two-tower, so positive means the two-tower is better. 95% CIs and p-values come from a user-clustered bootstrap (1000 resamples); p-values are Holm-adjusted across the 6 baselines. The smallest p a bootstrap this size can give is about 0.001 per comparison, so a value at that floor means no resample crossed zero.
+
+|                 |   rmse (baseline) |   rmse (two-tower) |   delta rmse | 95% CI             |   p (cluster boot) |   delta mae | 95% CI (mae)       |   p (mae) |
+|:----------------|------------------:|-------------------:|-------------:|:-------------------|-------------------:|------------:|:-------------------|----------:|
+| user+item as-of |             1.042 |              1.026 |      0.01638 | [+0.0148, +0.0179] |           0.005994 |    -0.0438  | [-0.0457, -0.0420] |  0.005994 |
+| user+item bias  |             1.078 |              1.026 |      0.05154 | [+0.0491, +0.0539] |           0.005994 |     0.07005 | [+0.0671, +0.0734] |  0.005994 |
+| user mean       |             1.08  |              1.026 |      0.0535  | [+0.0503, +0.0567] |           0.005994 |     0.068   | [+0.0646, +0.0714] |  0.005994 |
+| item mean       |             1.104 |              1.026 |      0.07795 | [+0.0751, +0.0810] |           0.005994 |     0.1178  | [+0.1136, +0.1225] |  0.005994 |
+| item kNN (k=40) |             1.108 |              1.026 |      0.08172 | [+0.0789, +0.0846] |           0.005994 |     0.1178  | [+0.1135, +0.1224] |  0.005994 |
+| global mean     |             1.112 |              1.026 |      0.08553 | [+0.0821, +0.0893] |           0.005994 |     0.1325  | [+0.1281, +0.1373] |  0.005994 |
+
+Strongest baseline (`user+item as-of`) by user history:
+
+|                               |   rmse (baseline) |   rmse (two-tower) |   delta rmse | 95% CI             |   p (cluster boot) |   delta mae | 95% CI (mae)       |   p (mae) |
+|:------------------------------|------------------:|-------------------:|-------------:|:-------------------|-------------------:|------------:|:-------------------|----------:|
+| user+item as-of - no history  |            1.296  |             1.274  |      0.02222 | [+0.0201, +0.0243] |           0.000999 |    -0.0155  | [-0.0175, -0.0135] |  0.000999 |
+| user+item as-of - has history |            0.8578 |             0.8459 |      0.01182 | [+0.0097, +0.0141] |           0.000999 |    -0.06056 | [-0.0629, -0.0581] |  0.000999 |
+
+Reading it: the two-tower's RMSE advantage is statistically solid against every baseline, including the as-of one
+(delta RMSE +0.016, 95% CI [+0.015, +0.018]), but small, and against that same baseline it is *significantly worse* on MAE
+(-0.044). Whether it is "better" depends on whether squared or absolute error is the goal.
 
 ## Serving (FastAPI)
 
@@ -156,6 +185,13 @@ and modeled into a small star schema with dbt:
     per product, one row per reviewer, one row per review, with dbt tests
     for uniqueness, not-null, and referential integrity between them)
 
+- **`fct_interactions_asof`** (with `int_interactions` and `split_cutoffs`) - one row per interaction with the temporal
+  split label and point-in-time user/item aggregates, each using only *strictly earlier* reviews, so it is safe as ML
+  input. `dim_users` / `dim_products` aggregate over all time and must not be used as features. Singular dbt tests
+  (`dbt_project/tests/`) fail on any train/val/test time overlap or an "as-of" count that includes the row itself.
+  Because dbt only runs inside Snowflake, `tests/test_dbt_asof_sql.py` executes the same SQL in DuckDB and checks it
+  against the Python pipeline (identical interactions, split and aggregates; also verified on the full 1.09M rows).
+
 This dbt project runs as a **native dbt Project inside Snowsight** (no local
 dbt install), connected read-only to this GitHub repo — the model SQL lives
 here as real, version-controlled code, but execution happens entirely in
@@ -164,8 +200,8 @@ Snowflake's UI.
 ## Roadmap
 
 - Serving: look up known users by id (their learned bias), refresh the catalog snapshot on a schedule, and rank with a retrieval-trained model.
-- Train for ranking (e.g. in-batch softmax) instead of rating regression; add paired significance tests between methods.
-- Build the dbt layer's user/item aggregates *as of each review* (window functions over earlier rows) before using them as ML features: `dim_users` aggregates over all time, so using it directly would leak.
+- Train for ranking (e.g. in-batch softmax) instead of rating regression.
+- Read the training features from `fct_interactions_asof` in Snowflake instead of recomputing them in Python (text embeddings stay in Python).
 
 ## Previous version
 

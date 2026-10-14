@@ -1,3 +1,4 @@
 -r requirements-torch.txt
 -r requirements-serving.txt
 pytest
+duckdb  # runs the dbt models' SQL locally (tests/test_dbt_asof_sql.py)

@@ -1,0 +1,27 @@
+version: 2
+
+models:
+  - name: int_interactions
+    description: One interaction per (author_id, product_id); the user's latest review wins.
+    columns:
+      - name: author_id
+        tests:
+          - not_null
+      - name: product_id
+        tests:
+          - not_null
+      - name: submission_time
+        tests:
+          - not_null
+
+  - name: split_cutoffs
+    description: >
+      Single row with the temporal split boundaries (val_start, test_start) and the
+      train-only mean rating. Fractions come from the dbt vars val_frac / test_frac.
+    columns:
+      - name: val_start
+        tests:
+          - not_null
+      - name: test_start
+        tests:
+          - not_null

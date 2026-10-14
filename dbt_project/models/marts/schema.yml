@@ -45,3 +45,36 @@ models:
         tests:
           - accepted_values:
               values: [1, 2, 3, 4, 5]
+
+  - name: fct_interactions_asof
+    description: >
+      One row per (user, product) interaction with point-in-time user and item
+      aggregates and the temporal train/val/test label. Every aggregate uses
+      only strictly EARLIER reviews, so it is safe to use as ML input; unlike
+      dim_users / dim_products, which aggregate over all time and would leak.
+      Matches src/features/ and src/split.py (see tests/test_dbt_asof_sql.py).
+    columns:
+      - name: split
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["train", "val", "test"]
+      - name: submission_time
+        tests:
+          - not_null
+      - name: rating
+        tests:
+          - accepted_values:
+              values: [1, 2, 3, 4, 5]
+      - name: u_hist_count
+        description: The user's reviews strictly before this one.
+        tests:
+          - not_null
+      - name: i_hist_count
+        description: The product's reviews strictly before this one.
+        tests:
+          - not_null
+      - name: i_rating_mean
+        description: Prior mean rating of the product, shrunk toward the TRAIN mean (var item_shrinkage).
+        tests:
+          - not_null

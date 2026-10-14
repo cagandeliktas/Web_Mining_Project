@@ -1,3 +1,6 @@
+-- WARNING: these aggregates cover a user's reviews over ALL time, including the
+-- review being predicted. Do NOT use them as ML features (they leak the label and
+-- the future). Use fct_interactions_asof, whose aggregates are point-in-time.
 with reviews as (
     select * from {{ ref('stg_reviews') }}
 ),

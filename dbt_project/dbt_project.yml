@@ -5,10 +5,19 @@ config-version: 2
 profile: "dbt_project"
 
 model-paths: ["models"]
+test-paths: ["tests"]
+
+# Knobs shared with configs/default.yaml (split.val_frac, split.test_frac, features.item_shrinkage).
+vars:
+  val_frac: 0.10
+  test_frac: 0.10
+  item_shrinkage: 10
 
 models:
   dbt_project:
     staging:
+      +materialized: view
+    intermediate:
       +materialized: view
     marts:
       +materialized: table
