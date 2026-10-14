@@ -191,6 +191,9 @@ and modeled into a small star schema with dbt:
   (`dbt_project/tests/`) fail on any train/val/test time overlap or an "as-of" count that includes the row itself.
   Because dbt only runs inside Snowflake, `tests/test_dbt_asof_sql.py` executes the same SQL in DuckDB and checks it
   against the Python pipeline (identical interactions, split and aggregates; also verified on the full 1.09M rows).
+  Also run on Snowflake: `dbt build --select +fct_interactions_asof` finished with PASS=19 WARN=0 ERROR=0, and
+  `dbt_project/analyses/verify_fct_interactions_asof.sql` returned exactly the Python figures (1,088,824 interactions,
+  870,476 / 109,438 / 108,910 train / val / test, cut-offs 2022-02-02 and 2022-08-16, train mean 4.2905).
 
 This dbt project runs as a **native dbt Project inside Snowsight** (no local
 dbt install), connected read-only to this GitHub repo — the model SQL lives
