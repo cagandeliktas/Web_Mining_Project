@@ -3,6 +3,12 @@
 [![Tests](https://github.com/cagandeliktas/Web_Mining_Project/actions/workflows/tests.yml/badge.svg)](https://github.com/cagandeliktas/Web_Mining_Project/actions/workflows/tests.yml)
 [![API Tests](https://github.com/cagandeliktas/Web_Mining_Project/actions/workflows/api-tests.yml/badge.svg)](https://github.com/cagandeliktas/Web_Mining_Project/actions/workflows/api-tests.yml)
 
+> **DEPRECATED - this is the previous Keras/TensorFlow version, kept for reference only.**
+> Its train/test handling leaked labels into the user features, and its reported numbers (RMSE 1.087 / MAE 0.730)
+> came from a random row split, so they should not be trusted or compared with the current results.
+> The maintained PyTorch rewrite (temporal split, as-of features, honest baselines) lives on
+> [`main`](https://github.com/cagandeliktas/Web_Mining_Project/tree/main).
+
 A content-based neural network recommendation model consists of two parallel subnetworks—one for users and one for products—each designed to learn latent representations from their respective feature sets. These embeddings capture user preferences and product characteristics in a shared vector space, enabling the model to predict interactions such as ratings or affinities.
 
 *User Subnetwork:
