@@ -1,7 +1,4 @@
-# Runtime dependencies for the tested src/ package (preprocessing, metrics,
-# similarity). The notebooks themselves pull in additional packages
-# (tensorflow, keras-tuner, vaderSentiment, scikit-surprise, gensim, ...)
-# that are not needed to run the test suite.
+# Core runtime dependencies shared by every requirements-*.txt file.
 numpy
 pandas
 scikit-learn

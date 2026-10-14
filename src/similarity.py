@@ -1,9 +1,8 @@
 """Nearest-neighbour lookup over item embeddings learned by the two-tower model.
 
-Extracted from NeuralNetworkApproach/NN_w_textFeatures.ipynb. The notebook version
-of this function reads `prod_ids` and `vm_all` from notebook globals; here they are
-explicit parameters so the function can be unit tested in isolation. The distance
-computation and tie-breaking logic are unchanged.
+Framework-agnostic: takes `prod_ids` and the embedding matrix `vm_all` explicitly
+(e.g. from src.ranking.catalog_embeddings), so it can be unit tested in isolation
+and is used by notebooks/two_tower_pytorch.ipynb.
 """
 import numpy as np
 import pandas as pd

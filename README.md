@@ -3,25 +3,78 @@
 [![Tests](https://github.com/cagandeliktas/Web_Mining_Project/actions/workflows/tests.yml/badge.svg)](https://github.com/cagandeliktas/Web_Mining_Project/actions/workflows/tests.yml)
 [![API Tests](https://github.com/cagandeliktas/Web_Mining_Project/actions/workflows/api-tests.yml/badge.svg)](https://github.com/cagandeliktas/Web_Mining_Project/actions/workflows/api-tests.yml)
 
-A content-based neural network recommendation model consists of two parallel subnetworks—one for users and one for products—each designed to learn latent representations from their respective feature sets. These embeddings capture user preferences and product characteristics in a shared vector space, enabling the model to predict interactions such as ratings or affinities.
+A content-based **two-tower** recommender in **PyTorch**, built to be evaluated honestly: a temporal
+split, point-in-time ("as-of") features with no label leakage, and real baselines to beat.
 
-*User Subnetwork:
+```
+y_hat = mu + b_user + b_item + <tower_user(x_user), tower_item(x_item)>
+```
 
-The user subnetwork takes as input a rich set of features that reflect both user identity and behavior. These include unique identifiers such as author_id, behavioral statistics like average rating, number of reviews, and helpfulness score, as well as personal attributes such as skin tone. Additionally, semantic information from user reviews is represented using TF-IDF and compressed via Truncated SVD. These features are processed through the user subnetwork’s layers to produce a compact user embedding vector V_u, which represents the user’s preferences.
+- **User tower** - the user's strictly-*earlier* reviews (count, mean rating, recommend rate, mean TF-IDF/SVD text embedding)
+  plus self-reported skin/eye/hair profile.
+- **Item tower** - static catalogue attributes (price, size, brand breadth, flags) plus the item's *as-of* review
+  count and shrunk mean rating.
+- **Bias head** - `mu` is the train mean; `b_user`/`b_item` are looked up by id, with slot 0 (id unseen in train)
+  pinned to zero, so brand-new users and products are scored from content alone.
 
-*Product Subnetwork:
+Everything is in `src/` (unit-tested in CI); `notebooks/two_tower_pytorch.ipynb` only *calls* it.
 
-The product subnetwork receives features that describe the product’s properties and overall appeal. These include numerical attributes such as price, average rating, and number of reviews, as well as binary indicators of availability and exclusivity—such as whether the product is new, limited edition, or sold exclusively by the platform. Categorical product descriptors like type, formulation, and category (e.g., makeup, skincare) provide contextual detail, while brand frequency and size-related attributes help capture product scale and popularity. These inputs are also passed through the product subnetwork’s layers to produce the product embedding vector V_m.
+## Results
 
-Scoring:
+Temporal split by review date (train to 2022-02-01, val to 2022-08-15, test 2022-08-16 to 2023-03-21; 55% of test
+rows are from users, and 44% from products, with no train review). Baseline shrinkage is tuned on val only.
 
-The final prediction is computed as the dot product of the user and product embedding vectors:
+| Test set (n = 108,910) | RMSE | MAE |
+|---|---|---|
+| **Two-tower (PyTorch)** | **1.026** | 0.739 |
+| User + item bias, *as-of* (same history the NN sees) | 1.042 | **0.696** |
+| User + item bias (train-only) | 1.078 | 0.809 |
+| User mean | 1.080 | 0.807 |
+| Item mean | 1.104 | 0.857 |
+| Item-kNN with means | 1.108 | 0.857 |
+| Global mean | 1.112 | 0.872 |
 
-score = V_u * V_m (dot product)
+What to take from it:
 
-This scalar score reflects the compatibility between a given user and product and can be used for tasks like ranking, recommendation, or rating prediction. The content-based neural network architecture is particularly effective in large-scale recommendation systems, where it allows for efficient candidate generation and retrieval by separately encoding users and items.
+- The two-tower wins on RMSE but only by ~1.5% over the as-of bias baseline, and **loses on MAE** (64% of ratings are
+  5 stars, so a squared-error model predicts a bit low). Its edge is largest for users with no history
+  (1.274 vs 1.296) and for 2-4 prior reviews (1.015 vs 1.030); with 5+ prior reviews it is a tie.
+- At **full-catalog ranking** (rank the product a user actually reviewed and liked among ~2,200 candidates) it is
+  only slightly above random and below simple baselines: HR@10 is roughly 0.009-0.013 across runs, against 0.005
+  random, 0.019 popularity and 0.050 "highest mean rating". A rating regressor is not trained to rank; a
+  ranking loss (e.g. in-batch softmax) is the natural next step.
+- Run-to-run variation: training on Apple's `mps` backend is not bit-deterministic, so ranking numbers move a little
+  between runs; the same-seed determinism tests run on CPU.
+- The numbers in earlier versions of this README (RMSE 1.087 / MAE 0.730) came from a random row split with
+  label-leaking user features and are **not comparable**.
 
-**Additionally, this project includes matrix factorization using SVD, as well as simple content-based and collaborative filtering approaches.
+Full tables (by history bucket, val and test, ranking @5/10/20): `python -m scripts.evaluate` writes
+`runs/latest/results.md`.
+
+### Why these numbers are trustworthy
+
+- **Temporal split**, never a random row split, with `assert_no_leakage` on time ordering and on (user, product) pairs.
+- **As-of features**: a row's features use only reviews with a strictly earlier timestamp, so its own rating, its own
+  text and same-day reviews never enter. Tests overwrite a row's label/text, or everything at or after time T, and
+  check the features do not move (`tests/test_features_leakage.py`).
+- **Fit on train only**: TF-IDF, SVD, imputation values, scalers, category lists, id vocabularies and the global mean.
+- **Dropped future-bearing columns**: `product_info`'s `rating`, `reviews`, `loves_count`, `out_of_stock` and review
+  helpfulness/feedback counts are 2023 snapshots that keep accruing after a review is posted.
+- **One interaction per (user, product)**: the latest review wins (the old pipeline averaged, blending later reviews
+  into earlier timestamps).
+
+## Quick start
+
+```bash
+python3.11 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt          # torch, pandas, scikit-learn, pytest, ...
+python -m scripts.prepare_data               # clean the raw CSVs + print the split report
+python -m scripts.build_features             # as-of features, cached in data_cache/
+python -m scripts.train                      # trains, early-stops on val, saves runs/latest/model.pt
+python -m scripts.evaluate                   # baselines vs the model on val/test -> runs/latest/results.md
+```
+
+All hyper-parameters live in `configs/default.yaml`. For the notebook: `pip install -r requirements-notebook.txt`.
 
 Dataset:
 
@@ -36,27 +89,25 @@ https://www.kaggle.com/datasets/nadyinky/sephora-products-and-skincare-reviews/d
 
 ## Development
 
-The notebooks are exploratory (feature engineering, model training, hyperparameter
-tuning). A few reusable pieces of logic from `NN_w_textFeatures.ipynb` have been
-extracted into a small tested package under `src/`, so they can be verified in
-isolation instead of only being checked by re-running the whole notebook:
-
-- `src/preprocessing.py` — parsing the raw `size` field into millilitres.
-- `src/metrics.py` — the precision/recall/F1/accuracy and precision@k/nDCG@k
-  evaluation functions used to score the two-tower model.
-- `src/similarity.py` — the nearest-neighbour lookup over item embeddings
-  (parameterized to take `prod_ids` and the embedding matrix explicitly, so it
-  doesn't depend on notebook globals).
-
-Run the tests locally with:
-
-```bash
-pip install -r requirements-dev.txt
-pytest -v
+```
+configs/default.yaml        single source of truth for split, features, model, training
+src/data.py                 load + clean reviews (mirrors dbt stg_reviews), one interaction per (user, product)
+src/split.py                temporal split, leakage assertions, cold-start report
+src/features/               as-of aggregation, user / item / text features
+src/transforms.py           fit-on-train scaling, imputation, one-hot, id vocabularies
+src/pipeline.py             FeatureSet + load_or_build_features (cached)
+src/torch_data.py           in-memory torch Dataset
+src/models/two_tower.py     the model
+src/train.py                training loop (AdamW, bias shrinkage, id dropout, val early stopping)
+src/baselines.py            mean / item / user / bias / as-of / item-kNN baselines
+src/evaluate.py, ranking.py rating metrics by history bucket; full-catalog ranking
+src/benchmark.py            run_benchmark: every method on val/test
+scripts/                    thin CLIs over the above
+notebooks/                  calls src/ only (a test fails if a notebook defines functions)
 ```
 
-A GitHub Actions workflow (`.github/workflows/tests.yml`) runs the same test suite
-on every push and pull request against `main`.
+Run the tests with `pytest -v`. CI (`.github/workflows/tests.yml`) installs the CPU build of torch and runs the same
+suite on every push and pull request against `main`.
 
 ## Serving the model (FastAPI)
 
@@ -163,23 +214,13 @@ outperformed the two-tower NN — mean absolute error 0.644 vs. 0.837
 This is a genuine, not-hoped-for result: the simple classical baseline beats the
 neural model on held-out ratings.
 
-## Training the two-tower model
+## Status of the legacy Keras pieces
 
-`NeuralNetworkApproach/NN_w_textFeatures.ipynb` splits review rows into
-train/test first, fits TF-IDF/SVD/scalers on the train portion only, and builds
-every user's profile from their train-side reviews only - the same procedure
-`build_user_vector` uses at serving time. The full Hyperband search is
-realistically a ~60 minute job (most of the cost is one-time feature-engineering
-setup), so the production model was produced with the equivalent background
-script instead of an interactive kernel:
+Training is described in *Quick start* above. The old Keras notebook, its TensorFlow training script and its Keras-based metrics have
+been replaced by the PyTorch pipeline; the previous implementation is kept in git history (and, for the
+uncommitted notebook state, on the local branch `backup/pre-step5-wip`).
 
-```bash
-pip install -r requirements-train.txt
-python scripts/train_model.py --data-dir /path/to/sephora_datasets --search full
-```
-
-**Result** (full 90-trial Hyperband search): test RMSE **1.087**, MAE **0.730**.
-
-The resulting `artifacts/*.pkl`, `artifacts/item_matrix.pkl`, and
-`NeuralNetworkApproach/final_two_tower_model_last.keras` are what the FastAPI
-service and the A/B test above run against.
+> **Serving, the A/B script and the dbt layer still describe the previous Keras model** (`artifacts/*.pkl`,
+> `NeuralNetworkApproach/final_two_tower_model_last.keras`, `src/user_features.py`, `src/item_features.py`). They are
+> untouched and being ported to the PyTorch model and the as-of features; until then the A/B result below is
+> about the old model and should not be compared with the table above.

@@ -1,0 +1,5 @@
+# To run / re-execute notebooks/two_tower_pytorch.ipynb
+-r requirements-torch.txt
+matplotlib
+jupyterlab
+nbclient

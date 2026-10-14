@@ -1,4 +1,6 @@
--r requirements-dev.txt
+# Legacy Keras serving stack (app/, tests/test_api_regression.py). Does not need torch.
+-r requirements.txt
+pytest
 fastapi
 uvicorn[standard]
 tensorflow==2.21.0
