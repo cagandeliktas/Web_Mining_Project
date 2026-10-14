@@ -1,7 +1,6 @@
 # Web_Mining_Project
 
 [![Tests](https://github.com/cagandeliktas/Web_Mining_Project/actions/workflows/tests.yml/badge.svg)](https://github.com/cagandeliktas/Web_Mining_Project/actions/workflows/tests.yml)
-[![API Tests](https://github.com/cagandeliktas/Web_Mining_Project/actions/workflows/api-tests.yml/badge.svg)](https://github.com/cagandeliktas/Web_Mining_Project/actions/workflows/api-tests.yml)
 
 A content-based **two-tower** recommender in **PyTorch**, built to be evaluated honestly: a temporal
 split, point-in-time ("as-of") features with no label leakage, and real baselines to beat.
@@ -45,11 +44,11 @@ What to take from it:
   ranking loss (e.g. in-batch softmax) is the natural next step.
 - Run-to-run variation: training on Apple's `mps` backend is not bit-deterministic, so ranking numbers move a little
   between runs; the same-seed determinism tests run on CPU.
-- The numbers in earlier versions of this README (RMSE 1.087 / MAE 0.730) came from a random row split with
-  label-leaking user features and are **not comparable**.
+- The numbers in earlier versions of this README (RMSE 1.087 / MAE 0.730, on the `deprecated` branch) came from a
+  random row split with label-leaking user features and are **not comparable**.
 
-Full tables (by history bucket, val and test, ranking @5/10/20): `python -m scripts.evaluate` writes
-`runs/latest/results.md`.
+Full tables (by history bucket, val and test, ranking @5/10/20) are in [`results/results.md`](results/results.md);
+`python -m scripts.evaluate` regenerates them into `runs/latest/results.md`.
 
 ### Why these numbers are trustworthy
 
@@ -64,6 +63,8 @@ Full tables (by history bucket, val and test, ranking @5/10/20): `python -m scri
   into earlier timestamps).
 
 ## Quick start
+
+First download the Kaggle dataset (see *Dataset* below) into `sephora_datasets/` (gitignored).
 
 ```bash
 python3.11 -m venv .venv && source .venv/bin/activate
@@ -109,62 +110,6 @@ notebooks/                  calls src/ only (a test fails if a notebook defines 
 Run the tests with `pytest -v`. CI (`.github/workflows/tests.yml`) installs the CPU build of torch and runs the same
 suite on every push and pull request against `main`.
 
-## Serving the model (FastAPI)
-
-The trained two-tower model is served behind a small FastAPI app with a single
-endpoint:
-
-```bash
-pip install -r requirements-api.txt
-uvicorn app.main:app --reload
-```
-
-`POST /recommendations` takes a user's review history (optionally empty, for a
-cold-start/anonymous user) and returns the top-K products the model predicts
-they'd rate highest:
-
-```bash
-curl -X POST localhost:8000/recommendations \
-  -H "Content-Type: application/json" \
-  -d '{"reviews": [{"rating": 5, "is_recommended": true, "review_text": "Loved it!",
-                      "skin_tone": "medium", "skin_type": "oily",
-                      "eye_color": "brown", "hair_color": "black"}],
-       "top_k": 5}'
-```
-
-`app/inference.py` ports the notebook's `build_user_vector` logic (now
-`src/user_features.py`) and scores the user vector against every product in
-`artifacts/item_matrix.pkl`, a precomputed catalog feature matrix built by
-`scripts/build_item_matrix.py`.
-
-**A note on faithfulness, not just runnability:** the notebook's own "let's
-try recommending for a new user" cells (near the bottom of
-`NN_w_textFeatures.ipynb`) turned out to feed the model **unscaled** item
-features, even though the model was trained and evaluated on features scaled
-with `StandardScaler` (`artifacts/scaler_item.pkl`). This API deliberately
-does *not* reproduce that bug — it applies the same scaling the model was
-actually trained on, which is the technically correct approach, even though
-it means the API's recommendations differ from the notebook's cached example
-output. See `scripts/build_item_matrix.py`'s docstring for the details; this
-was caught by building a small script to reproduce the notebook's example
-predictions from scratch and finding they only matched once the scaling step
-was (incorrectly) skipped.
-
-Preprocessing artifacts (`artifacts/*.pkl`) and `artifacts/product_info.csv`
-are committed so the API is self-contained. The large raw review CSVs are
-not committed (see `.gitignore`) - they're only needed to regenerate
-`artifacts/item_matrix.pkl` via `scripts/build_item_matrix.py`, since that's
-the one thing that requires knowing which products actually have reviews:
-
-```bash
-python scripts/build_item_matrix.py --data-dir /path/to/sephora_datasets
-```
-
-Because the model needs TensorFlow (a large, slow dependency), its tests
-live in a separate suite (`tests/test_api_regression.py`, marked `api`) and
-a separate, slower workflow (`.github/workflows/api-tests.yml`), so the fast
-unit tests above stay fast on every push.
-
 ## Data warehouse (Snowflake + dbt)
 
 The raw Sephora CSVs are also loaded into a Snowflake database (`WEB_MINING`)
@@ -185,42 +130,14 @@ dbt install), connected read-only to this GitHub repo — the model SQL lives
 here as real, version-controlled code, but execution happens entirely in
 Snowflake's UI.
 
-## A/B test: classical CF vs. the two-tower NN
+## Roadmap
 
-`scripts/run_ab_comparison.py` compares `Basic_Recommender_System.ipynb`'s best
-classical baseline (KNNWithMeans, item-based Pearson similarity — variant A)
-against the two-tower neural network (variant B) with a proper paired
-significance test, not just eyeballing two separate metrics.
+- Serve the PyTorch model (FastAPI) using the same fitted transforms and as-of feature code as training.
+- Train for ranking (e.g. in-batch softmax) instead of rating regression; add paired significance tests between methods.
+- Build the dbt layer's user/item aggregates *as of each review* (window functions over earlier rows) before using them as ML features: `dim_users` aggregates over all time, so using it directly would leak.
 
-**Methodology:** a leave-one-out evaluation. For every user with at least 2
-ratings, one (product, rating) pair is held out and predicted from
-everything else that user rated — variant A retrains on the same held-out
-split, and variant B builds each user's vector from their remaining reviews
-via `src/user_features.py`'s `build_user_vector` (the same function the
-FastAPI service uses for a real user). Both variants are scored on the
-*exact same* 1,000 held-out instances, which is what makes a paired test
-(`src/ab_testing.py`) meaningful rather than comparing two unrelated
-samples.
+## Previous version
 
-```bash
-pip install -r requirements-ab.txt
-python scripts/run_ab_comparison.py --data-dir /path/to/sephora_datasets
-```
-
-**Result** (`ab_test_results.json`, n=1,000): KNNWithMeans significantly
-outperformed the two-tower NN — mean absolute error 0.644 vs. 0.837
-(paired t-test p ≈ 1×10⁻¹², Wilcoxon signed-rank p ≈ 1×10⁻¹³).
-
-This is a genuine, not-hoped-for result: the simple classical baseline beats the
-neural model on held-out ratings.
-
-## Status of the legacy Keras pieces
-
-Training is described in *Quick start* above. The old Keras notebook, its TensorFlow training script and its Keras-based metrics have
-been replaced by the PyTorch pipeline; the previous implementation is kept in git history (and, for the
-uncommitted notebook state, on the local branch `backup/pre-step5-wip`).
-
-> **Serving, the A/B script and the dbt layer still describe the previous Keras model** (`artifacts/*.pkl`,
-> `NeuralNetworkApproach/final_two_tower_model_last.keras`, `src/user_features.py`, `src/item_features.py`). They are
-> untouched and being ported to the PyTorch model and the as-of features; until then the A/B result below is
-> about the old model and should not be compared with the table above.
+The earlier Keras/TensorFlow implementation (monolithic notebook, FastAPI service, A/B script, random-split results)
+is preserved on the [`deprecated`](https://github.com/cagandeliktas/Web_Mining_Project/tree/deprecated) branch.
+Its reported numbers came from a leaky random split and should not be compared with the results above.

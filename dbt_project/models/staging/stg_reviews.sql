@@ -3,8 +3,8 @@ with source as (
 ),
 
 -- author_id is occasionally corrupted (letters mixed into what should be a
--- numeric id) - same data-quality rule already validated in the two-tower
--- notebook's df_reviews_final construction and scripts/build_item_matrix.py.
+-- numeric id) - the same data-quality rule applied in src/data.py (clean_reviews),
+-- which the PyTorch pipeline uses.
 --
 -- 387 rows agree on (author_id, product_id, submission_time, review_text)
 -- but differ in other fields - not exact duplicates (SELECT DISTINCT

@@ -1,7 +1,7 @@
 """Feature-cleaning utilities used to build the item feature matrix.
 
-Extracted from NeuralNetworkApproach/NN_w_textFeatures.ipynb so the logic can be
-unit tested and reused outside the notebook.
+Parses the raw `size` strings for src/features/item.py; kept separate so the logic can be
+unit tested on its own.
 """
 import re
 
