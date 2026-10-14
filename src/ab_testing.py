@@ -1,5 +1,9 @@
 """Paired significance testing between two rating predictors on the same held-out rows.
 
+In plain words: Statistics for "is method B really better than method A on the same reviews?".
+Reviews by one user resemble each other, so instead of treating every row as independent it
+resamples whole users (a "bootstrap") to get honest uncertainty ranges.
+
 Reviews by one user are correlated, so row-level tests (paired t, Wilcoxon)
 overstate certainty. The primary evidence here is therefore a **user-clustered
 bootstrap**: whole users are resampled, which keeps their rows together. The
@@ -14,6 +18,9 @@ from scipy import stats
 
 
 def _arrays(y, pred_a, pred_b, groups):
+    """Check the inputs are valid (same length, 1-D, at least 2 rows) and turn user ids into integer
+    group codes.
+    """
     y, pa, pb = (np.asarray(v, dtype="float64") for v in (y, pred_a, pred_b))
     if not (y.shape == pa.shape == pb.shape) or y.ndim != 1:
         raise ValueError("y, pred_a and pred_b must be 1-D arrays of the same length")
@@ -38,6 +45,9 @@ def cluster_bootstrap(y, pred_a, pred_b, groups=None, n_boot: int = 1000, seed: 
     }
 
     def deltas(w):
+        """For one resample (w = how many times each user was drawn) compute baseline-minus-challenger
+        RMSE and MAE.
+        """
         n = w @ stats_by_group["n"]
         d_rmse = np.sqrt(w @ stats_by_group["se_a"] / n) - np.sqrt(w @ stats_by_group["se_b"] / n)
         d_mae = (w @ stats_by_group["ae_a"] - w @ stats_by_group["ae_b"]) / n

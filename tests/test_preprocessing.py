@@ -1,3 +1,4 @@
+"""Tests the product-size text parser."""
 import math
 
 import numpy as np

@@ -1,3 +1,4 @@
+"""Tests the nearest-product lookup."""
 import numpy as np
 import pytest
 

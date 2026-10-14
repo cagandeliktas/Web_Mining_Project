@@ -1,5 +1,8 @@
 """Global temporal train/val/test split.
 
+In plain words: Cuts the reviews by date into train (oldest), validation and test (newest), and
+checks that nothing from the future leaks into the past.
+
 Interactions are ordered by ``submission_time``: the oldest go to train, the
 newest to test. Cut-offs fall on a timestamp, never inside one, so rows that
 share a timestamp (reviews are dated to the day) always land in the same
@@ -18,6 +21,9 @@ SPLITS = ("train", "val", "test")
 
 @dataclass(frozen=True)
 class SplitCutoffs:
+    """The two dates that cut time into train (before val_start), validation, and test (from test_start
+    on).
+    """
     val_start: pd.Timestamp
     test_start: pd.Timestamp
 

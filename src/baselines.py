@@ -1,5 +1,9 @@
 """Non-neural rating baselines the two-tower model has to beat.
 
+In plain words: The simple, non-neural prediction methods the neural network has to beat (overall
+average, product average, user average, ...). If the network cannot beat these it is not adding
+value.
+
 Static baselines (global / item / user / bias / kNN) are fitted on the train
 rows only and then frozen - the textbook setup. ``asof_additive`` is the fair
 counterpart to the neural model: it sees exactly the same strictly-earlier
@@ -16,17 +20,21 @@ LO, HI = 1.0, 5.0
 
 
 def _clip(x) -> np.ndarray:
+    """Force predictions into the valid 1-5 star range."""
     return np.clip(np.asarray(x, dtype="float64"), LO, HI)
 
 
 class GlobalMean:
+    """Predicts the same number for every review: the average training rating."""
     name = "global mean"
 
     def fit(self, train: pd.DataFrame):
+        """Remember the average rating of the training reviews."""
         self.mu = float(train["rating"].mean())
         return self
 
     def predict(self, df: pd.DataFrame) -> np.ndarray:
+        """Return that average for every row."""
         return np.full(len(df), self.mu)
 
 
@@ -36,24 +44,34 @@ class _ShrunkMean:
     key = ""
 
     def __init__(self, k: float):
+        """k = how many imaginary average-valued ratings to mix in; larger k trusts the overall average
+        more.
+        """
         self.k = k
 
     def fit(self, train: pd.DataFrame):
+        """Compute each key's shrunk average from the training reviews."""
         self.mu = float(train["rating"].mean())
         g = train.groupby(self.key)["rating"].agg(["sum", "count"])
         self.table = (g["sum"] + self.k * self.mu) / (g["count"] + self.k)
         return self
 
     def predict(self, df: pd.DataFrame) -> np.ndarray:
+        """Look up each row's key; unknown keys get the overall average. Result is clipped to 1-5.
+        """
         return _clip(df[self.key].map(self.table).fillna(self.mu))
 
 
 class ItemMean(_ShrunkMean):
+    """Predicts a product's (shrunk) average rating, ignoring who the user is."""
     name = "item mean"
     key = "product_id"
 
 
 class UserMean(_ShrunkMean):
+    """Predicts a user's (shrunk) average rating from their earlier reviews, ignoring which product it
+    is.
+    """
     name = "user mean"
     key = "author_id"
 
@@ -64,9 +82,15 @@ class BiasBaseline:
     name = "user+item bias"
 
     def __init__(self, lam_user: float = 15.0, lam_item: float = 10.0, iters: int = 10):
+        """lam_user / lam_item = how strongly user / item offsets are pulled toward 0 (regularisation);
+        iters = rounds of alternating updates.
+        """
         self.lam_user, self.lam_item, self.iters = lam_user, lam_item, iters
 
     def fit(self, train: pd.DataFrame):
+        """Alternately re-estimate every product's offset, then every user's offset, for `iters` rounds
+        (alternating least squares).
+        """
         self.mu = float(train["rating"].mean())
         u, u_keys = pd.factorize(train["author_id"])
         i, i_keys = pd.factorize(train["product_id"])
@@ -81,6 +105,8 @@ class BiasBaseline:
         return self
 
     def predict(self, df: pd.DataFrame) -> np.ndarray:
+        """overall average + user offset + product offset; unknown users or products get offset 0.
+        """
         bu = df["author_id"].map(self.b_u).fillna(0.0).to_numpy()
         bi = df["product_id"].map(self.b_i).fillna(0.0).to_numpy()
         return _clip(self.mu + bu + bi)
@@ -110,12 +136,18 @@ class ItemKNN:
     name = "item kNN"
 
     def __init__(self, k: int = 40, sim_shrinkage: float = 50.0, den_shrinkage: float = 0.0, mean_shrinkage: float = 10.0):
+        """k = how many similar products to use; the three *_shrinkage values damp noisy similarities
+        and averages when data is thin.
+        """
         self.k = k
         self.mean_shrinkage = mean_shrinkage  # shrinks item means toward the global mean (noisy for rarely rated items)
         self.den_shrinkage = den_shrinkage  # adds to sum(sim) in the denominator: weak neighbours move the estimate less
         self.sim_shrinkage = sim_shrinkage  # sim *= n_co / (n_co + shrinkage): distrusts pairs with few co-raters
 
     def fit(self, train: pd.DataFrame):
+        """Measure how similar every pair of products is from how training users rated them, and
+        remember each user's ratings.
+        """
         self.mu = float(train["rating"].mean())
         u, u_keys = pd.factorize(train["author_id"])
         self.user_codes = pd.Series(np.arange(len(u_keys)), index=u_keys)
@@ -140,6 +172,9 @@ class ItemKNN:
         return self
 
     def predict(self, df: pd.DataFrame) -> np.ndarray:
+        """For each row, start from the product's average and nudge it using the user's ratings of the
+        most similar products (a simple per-row loop).
+        """
         uc = df["author_id"].map(self.user_codes).to_numpy()
         ic = df["product_id"].map(self.item_codes).to_numpy()
         out = np.full(len(df), self.mu, dtype="float64")

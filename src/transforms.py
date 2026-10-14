@@ -1,5 +1,8 @@
 """Fit-on-train preprocessing: scaling, imputation, one-hot, and id vocabularies.
 
+In plain words: Preprocessing that is learned on the training data only: scale numbers, fill gaps,
+one-hot encode categories and map ids to integers.
+
 Everything learned (medians, means, stds, category lists, id lists) comes from
 the rows passed to ``fit`` - the pipeline only ever passes train rows. The
 same fitted object is what serving must load, so training and inference
@@ -20,6 +23,10 @@ class TabularTransformer:
     """
 
     def __init__(self, numeric=(), log1p=(), binary=(), categorical=(), missing_indicators=(), min_count=1):
+        """numeric: columns to scale (log1p: take log(1+x) first); binary: 0/1 columns passed through;
+        categorical: columns to one-hot; missing_indicators: columns that also get a 0/1 "was
+        missing" flag; min_count: rarest category to keep.
+        """
         self.numeric = list(numeric)
         self.log1p = set(log1p)
         self.binary = list(binary)
@@ -28,12 +35,16 @@ class TabularTransformer:
         self.min_count = min_count
 
     def _numeric_values(self, df: pd.DataFrame, c: str) -> np.ndarray:
+        """Read a numeric column as floats (optionally log-transformed); bad values become NaN."""
         x = pd.to_numeric(df[c], errors="coerce").to_numpy(dtype="float64")
         if c in self.log1p:
             x = np.log1p(np.clip(x, 0.0, None))  # NaN stays NaN
         return x
 
     def fit(self, df: pd.DataFrame) -> "TabularTransformer":
+        """Learn from the training rows only: fill values, means and spreads, and the list of
+        categories.
+        """
         self.fill_, self.mean_, self.std_ = {}, {}, {}
         for c in self.numeric:
             x = self._numeric_values(df, c)
@@ -56,6 +67,8 @@ class TabularTransformer:
         return self
 
     def transform(self, df: pd.DataFrame) -> np.ndarray:
+        """Apply what was learned: fill gaps, scale, flag missing, one-hot; returns a float32 matrix.
+        """
         cols = []
         for c in self.numeric:
             x = self._numeric_values(df, c)
@@ -79,11 +92,14 @@ class IdVocab:
     """Maps ids seen in train to 1..N; anything else (cold) maps to 0."""
 
     def fit(self, ids: pd.Series) -> "IdVocab":
+        """Learn the ids that appear in training and number them 1..N."""
         self.index_ = {v: i + 1 for i, v in enumerate(sorted(pd.unique(ids.dropna())))}
         return self
 
     def __len__(self) -> int:  # number of embedding rows incl. the cold slot 0
+        """Number of slots: the known ids plus slot 0 for "unknown"."""
         return len(self.index_) + 1
 
     def transform(self, ids: pd.Series) -> np.ndarray:
+        """Convert ids to integers; ids never seen in training become 0."""
         return ids.map(self.index_).fillna(0).to_numpy(dtype="int64")

@@ -1,5 +1,8 @@
 """Request-time scoring that reuses the training feature code.
 
+In plain words: Turns one user's reviews into a score for every product, using exactly the same
+feature code as training.
+
 A request's reviews are treated exactly like a user's earlier history in
 training: one extra "query" row, dated after all of them, is appended and run
 through ``build_user_asof`` (the same function that built the training
@@ -51,11 +54,16 @@ def request_user_features(bundle: ServingBundle, reviews: pd.DataFrame | None, p
 
 
 class Recommender:
+    """Scores every product for one user: turns their reviews into a user vector, then combines it with
+    the precomputed product vectors.
+    """
     def __init__(self, bundle: ServingBundle):
+        """Keep the bundle and a product-id -> position lookup."""
         self.bundle = bundle
         self.pos = {pid: i for i, pid in enumerate(bundle.item_ids)}
 
     def user_embedding(self, reviews: pd.DataFrame | None, profile: dict | None = None) -> np.ndarray:
+        """Turn the user's reviews (and optional profile) into the user tower's output vector."""
         x = torch.from_numpy(request_user_features(self.bundle, reviews, profile))
         with torch.no_grad():
             return self.bundle.model.user_tower(x).numpy()[0]
@@ -66,6 +74,9 @@ class Recommender:
         return b.mu + b.item_emb @ user_emb + b.item_bias
 
     def recommend(self, reviews=None, profile=None, top_k: int = 10, exclude=(), min_item_reviews: int = 0) -> pd.DataFrame:
+        """Top `top_k` products by predicted rating, skipping ones the user already reviewed, ones in
+        `exclude`, and ones with fewer than `min_item_reviews` reviews.
+        """
         b = self.bundle
         scores = self.raw_scores(self.user_embedding(reviews, profile))
         allowed = b.item_count >= min_item_reviews
@@ -81,6 +92,8 @@ class Recommender:
         return out
 
     def predict(self, product_id: str, reviews=None, profile=None) -> float:
+        """Predicted rating (1-5) of one product for this user; raises KeyError for an unknown product.
+        """
         if product_id not in self.pos:
             raise KeyError(product_id)
         score = self.raw_scores(self.user_embedding(reviews, profile))[self.pos[product_id]]

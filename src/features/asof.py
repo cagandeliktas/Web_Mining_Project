@@ -1,5 +1,9 @@
 """Point-in-time ("as of") aggregation.
 
+In plain words: The key anti-leak helper. For every review it adds up what the same user (or
+product) did EARLIER, never including that review itself or anything later. "As-of" means "using
+only what was known at that moment".
+
 Every feature in this package is computed from rows that are **strictly
 earlier** than the row it describes. That one rule is what keeps the label
 and the future out of the inputs: a row's own rating, its own review text and

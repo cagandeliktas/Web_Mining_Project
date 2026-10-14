@@ -1,3 +1,6 @@
+"""Tests the statistics: a better method is detected, ties give p=1, user-clustering widens the
+uncertainty.
+"""
 import numpy as np
 import pytest
 

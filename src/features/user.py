@@ -1,5 +1,9 @@
 """User-side features, built as-of each interaction.
 
+In plain words: Builds the user-side numbers: how many reviews the user wrote before, their average
+rating, how often they recommend, a vector summarising the text they wrote, and their skin/eye/hair
+profile.
+
 For the interaction at time t, the history features aggregate only the same
 user's reviews with time < t. Demographics are the row's own self-reported
 profile (available at serving time as profile info, and not derived from the
@@ -18,6 +22,7 @@ DEMOGRAPHIC_COLUMNS = ["skin_tone", "skin_type", "eye_color", "hair_color"]
 
 
 def text_columns(n: int) -> list[str]:
+    """Names of the text-vector columns: u_text_00, u_text_01, ..."""
     return [f"u_text_{i:02d}" for i in range(n)]
 
 

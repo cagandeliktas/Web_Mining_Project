@@ -1,4 +1,8 @@
-"""TF-IDF + truncated SVD review-text embeddings (fit on train text only)."""
+"""TF-IDF + truncated SVD review-text embeddings (fit on train text only).
+
+In plain words: Turns review text into short lists of numbers (TF-IDF, then SVD) so the model can
+"read" what users wrote.
+"""
 
 import numpy as np
 import pandas as pd
@@ -17,6 +21,7 @@ def fit_text_model(train_texts: pd.Series, *, max_features: int, min_df, max_df,
 
 
 def has_text(texts: pd.Series) -> np.ndarray:
+    """True for reviews that contain real text (not missing, not just spaces)."""
     return texts.fillna("").str.strip().ne("").to_numpy()
 
 

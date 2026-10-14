@@ -1,5 +1,8 @@
 """Item-side features: static catalog attributes + as-of interaction stats.
 
+In plain words: Builds the product-side numbers: catalogue facts (price, size, brand size, flags)
+plus how many reviews and what average rating the product had BEFORE each review.
+
 Dropped on purpose: product_info's ``rating``, ``reviews``, ``loves_count``
 and ``out_of_stock``. They are 2023 snapshots computed from all reviews
 (including test-period ones), so they would leak the future. The as-of

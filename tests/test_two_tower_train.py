@@ -1,3 +1,4 @@
+"""Tests the model formula, training, early stopping, repeatability and saving/loading."""
 import numpy as np
 import pytest
 import torch

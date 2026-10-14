@@ -1,3 +1,4 @@
+"""Tests the simple baselines, the ranking metrics and the full benchmark run."""
 import numpy as np
 import pandas as pd
 import pytest

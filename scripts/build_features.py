@@ -1,5 +1,9 @@
 """Build and cache the leak-free feature set (temporal split + as-of features).
 
+In plain words: Step 2 of the pipeline: turn the cleaned reviews into the numbers the model reads
+(the "features") and save them, so training starts fast. Run once; add --refresh after changing the
+config.
+
 Usage:
     python -m scripts.build_features [--config configs/default.yaml] [--refresh] [--refresh-data]
 """
@@ -14,6 +18,8 @@ from src.pipeline import load_or_build_features
 
 
 def main() -> None:
+    """Command-line entry point: load (or build) the cached features and print the size of each split.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default=DEFAULT_CONFIG_PATH)
     parser.add_argument("--refresh", action="store_true", help="rebuild features even if cached")

@@ -1,5 +1,8 @@
 """One-time load: push the raw Sephora review CSVs into Snowflake.
 
+In plain words: One-off helper that uploads the large review CSVs to the Snowflake data warehouse
+(they are too big for the browser uploader).
+
 Loads all five reviews_*.csv files into WEB_MINING.RAW.REVIEWS_RAW as a
 single table. Columns are kept as-is (uppercased) with no type coercion -
 this is the "raw" landing layer; cleanup and typing happens later in dbt
@@ -35,6 +38,9 @@ TABLE_NAME = "REVIEWS_RAW"
 
 
 def main() -> None:
+    """Read Snowflake login details from environment variables and upload the review CSVs to the RAW
+    schema.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", required=True)
     parser.add_argument("--database", default="WEB_MINING")

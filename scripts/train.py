@@ -1,5 +1,8 @@
 """Train the PyTorch two-tower model on the cached leak-free features.
 
+In plain words: Step 3 of the pipeline: train the neural network and save the version with the
+lowest validation error.
+
 Reports validation metrics only; the test split is scored once, in the
 evaluation step, against the baselines.
 
@@ -20,6 +23,8 @@ from src.train import train_model
 
 
 def main() -> None:
+    """Command-line entry point: train the model and save it, plus its training history, under --out.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default=DEFAULT_CONFIG_PATH)
     parser.add_argument("--out", default="runs/latest")

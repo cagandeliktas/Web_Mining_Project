@@ -90,6 +90,10 @@ https://www.kaggle.com/datasets/nadyinky/sephora-products-and-skincare-reviews/d
 
 ## Development
 
+New here? **[docs/architecture.md](docs/architecture.md)** has a picture of how everything fits together, a
+plain-English table for every file, and a glossary. Every Python file and function also starts with a
+plain-English docstring.
+
 ```
 configs/default.yaml        single source of truth for split, features, model, training
 src/data.py                 load + clean reviews (mirrors dbt stg_reviews), one interaction per (user, product)

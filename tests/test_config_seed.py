@@ -1,3 +1,4 @@
+"""Tests that settings load and merge, and that seeding makes results repeatable."""
 import torch
 
 from src.config import load_config

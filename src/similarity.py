@@ -1,5 +1,8 @@
 """Nearest-neighbour lookup over item embeddings learned by the two-tower model.
 
+In plain words: Finds the products most similar to a given product by comparing the vectors the item
+network learned.
+
 Framework-agnostic: takes `prod_ids` and the embedding matrix `vm_all` explicitly
 (e.g. from src.ranking.catalog_embeddings), so it can be unit tested in isolation
 and is used by notebooks/two_tower_pytorch.ipynb.

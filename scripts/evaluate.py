@@ -1,5 +1,8 @@
 """One results table: baselines vs the PyTorch two-tower on val and test.
 
+In plain words: Scores the trained model and all the simple baselines on validation and test data
+and writes the results tables.
+
 Usage:
     python -m scripts.evaluate [--model runs/latest/model.pt] [--out runs/latest]
 """
@@ -15,6 +18,8 @@ from src.pipeline import load_or_build_features
 
 
 def main() -> None:
+    """Command-line entry point: score all methods on validation and test and write the results tables.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default=DEFAULT_CONFIG_PATH)
     parser.add_argument("--model", default="runs/latest/model.pt")

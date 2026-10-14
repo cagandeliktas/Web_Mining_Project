@@ -1,5 +1,8 @@
 """Clean the raw reviews, cache them as parquet, and print the temporal split report.
 
+In plain words: Step 1 of the pipeline: read the raw review CSVs, clean them, cache the result and
+print what the time-based train/val/test split looks like.
+
 Usage:
     python -m scripts.prepare_data [--config configs/default.yaml] [--refresh]
 """
@@ -14,6 +17,9 @@ from src.split import assert_no_leakage, split_report, temporal_split
 
 
 def main() -> None:
+    """Command-line entry point: clean the raw data, cache it and print the train/val/test split
+    report.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default=DEFAULT_CONFIG_PATH)
     parser.add_argument("--refresh", action="store_true", help="ignore the parquet cache")

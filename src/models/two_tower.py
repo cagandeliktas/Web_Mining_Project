@@ -1,5 +1,8 @@
 """Two-tower rating model with a bias head.
 
+In plain words: The neural network itself: one small network for users, one for products, and a
+score made from how well their outputs match.
+
     y_hat = mu + b_user + b_item + <tower_u(x_user), tower_i(x_item)>
 
 ``mu`` is the train mean rating. The biases are looked up by id; slot 0 is the
@@ -14,6 +17,9 @@ from torch import nn
 
 
 def _mlp(n_in: int, hidden: list[int], n_out: int, dropout: float) -> nn.Sequential:
+    """Build a small neural network: linear layers with ReLU and dropout that turn n_in numbers into
+    n_out numbers.
+    """
     layers, prev = [], n_in
     for h in hidden:
         layers += [nn.Linear(prev, h), nn.ReLU(), nn.Dropout(dropout)]
@@ -26,6 +32,9 @@ def _mlp(n_in: int, hidden: list[int], n_out: int, dropout: float) -> nn.Sequent
 
 
 class TwoTower(nn.Module):
+    """Predicts a rating as: overall average + user offset + product offset + how well the user vector
+    matches the product vector. Each vector comes from its own "tower" (a small network).
+    """
     def __init__(
         self,
         n_user_features: int,
@@ -38,6 +47,9 @@ class TwoTower(nn.Module):
         dropout: float = 0.1,
         use_biases: bool = True,
     ):
+        """Build the two towers and the offset lookup tables. n_users / n_items count the known ids
+        plus slot 0 for "unknown"; mu is the training average rating.
+        """
         super().__init__()
         self.init_args = dict(
             n_user_features=n_user_features, n_item_features=n_item_features,
@@ -55,9 +67,12 @@ class TwoTower(nn.Module):
             nn.init.zeros_(self.item_bias.weight)
 
     def biases(self, user_idx: torch.Tensor, item_idx: torch.Tensor):
+        """Look up the learned offset of each user and product (always 0 for slot 0, i.e. unknown ids).
+        """
         return self.user_bias(user_idx).squeeze(-1), self.item_bias(item_idx).squeeze(-1)
 
     def forward(self, x_user, x_item, user_idx, item_idx) -> torch.Tensor:
+        """Predict ratings for a batch of (user, product) pairs."""
         score = (self.user_tower(x_user) * self.item_tower(x_item)).sum(dim=-1)
         out = self.mu + score
         if self.use_biases:
@@ -67,10 +82,12 @@ class TwoTower(nn.Module):
 
 
 def save_model(model: TwoTower, path) -> None:
+    """Save the model's settings and learned weights to one file."""
     torch.save({"init_args": model.init_args, "state_dict": model.state_dict()}, path)
 
 
 def load_model(path, map_location="cpu") -> TwoTower:
+    """Rebuild a model from a saved file and put it in evaluation mode."""
     blob = torch.load(path, map_location=map_location, weights_only=True)
     model = TwoTower(**blob["init_args"])
     model.load_state_dict(blob["state_dict"])

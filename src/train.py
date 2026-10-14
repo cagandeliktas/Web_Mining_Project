@@ -1,4 +1,8 @@
-"""Training loop: Adam, MSE/Huber + bias shrinkage, id dropout, val-based early stopping."""
+"""Training loop: Adam, MSE/Huber + bias shrinkage, id dropout, val-based early stopping.
+
+In plain words: The training loop: show the network batches of reviews, adjust it to reduce error,
+and stop when validation error stops improving.
+"""
 
 import copy
 from dataclasses import dataclass, field
@@ -17,6 +21,7 @@ RATING_MIN, RATING_MAX = 1.0, 5.0
 
 @dataclass
 class TrainResult:
+    """What training returns: the best model, the per-epoch history, and which epoch was best."""
     model: TwoTower
     history: list = field(default_factory=list)
     best_epoch: int = -1
@@ -24,6 +29,9 @@ class TrainResult:
 
 
 def build_model(cfg, fs: FeatureSet) -> TwoTower:
+    """Create an untrained TwoTower sized to the features and id lists in `fs`, using the settings in
+    `cfg`.
+    """
     art = fs.artifacts
     return TwoTower(
         n_user_features=fs.X_user.shape[1],
@@ -40,6 +48,7 @@ def build_model(cfg, fs: FeatureSet) -> TwoTower:
 
 @torch.no_grad()
 def predict(model: TwoTower, data: InteractionData, batch_size: int = 16384, clip: bool = True) -> np.ndarray:
+    """Predict ratings for every row in `data` (clipped to 1-5 by default)."""
     model.eval()
     dev = next(model.parameters()).device  # the data may live on a different device than the model
     out = [model(xu.to(dev), xi.to(dev), ui.to(dev), ii.to(dev)) for xu, xi, ui, ii, _ in data.batches(batch_size)]
@@ -51,6 +60,7 @@ def predict(model: TwoTower, data: InteractionData, batch_size: int = 16384, cli
 
 @torch.no_grad()
 def evaluate_split(model: TwoTower, data: InteractionData) -> dict:
+    """RMSE and MAE of the model on one split."""
     pred = torch.from_numpy(predict(model, data)).to(data.device)
     err = pred - data.y
     return {"rmse": float(err.pow(2).mean().sqrt()), "mae": float(err.abs().mean())}
@@ -64,6 +74,9 @@ def apply_id_dropout(idx: torch.Tensor, p: float) -> torch.Tensor:
 
 
 def train_model(fs: FeatureSet, cfg, device=None, verbose: bool = True) -> TrainResult:
+    """Train with early stopping: after each epoch measure validation error, keep the best weights, and
+    stop after `patience` epochs without improvement.
+    """
     set_seed(cfg.seed)
     device = resolve_device(cfg.train.device) if device is None else torch.device(device)
     tc = cfg.train

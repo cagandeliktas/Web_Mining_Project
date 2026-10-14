@@ -1,5 +1,8 @@
 """Interactions + product catalog -> model-ready, leak-free feature arrays.
 
+In plain words: The glue that turns cleaned reviews plus the product catalogue into model-ready
+arrays, in the safe order: split by time first, fit everything on train only.
+
 Order of operations (the leakage contract):
 1. the temporal split labels are decided first;
 2. everything *fitted* (TF-IDF, SVD, imputation values, scalers, category and
@@ -32,6 +35,9 @@ META_COLUMNS = ["author_id", "product_id", "submission_time"]
 
 @dataclass
 class FeatureSet:
+    """Everything the model needs, as arrays: user features, item features, ids, true ratings, which
+    split each row belongs to, and the fitted preprocessing objects (which serving must reuse).
+    """
     X_user: np.ndarray            # (n, d_user) float32
     X_item: np.ndarray            # (n, d_item) float32
     user_idx: np.ndarray          # (n,) int64, 0 = user unseen in train
@@ -43,6 +49,7 @@ class FeatureSet:
     artifacts: dict = field(default_factory=dict)  # tfidf, svd, user_tf, item_tf, vocabs
 
     def part(self, name: str) -> dict:
+        """Return one split ("train", "val" or "test") as a dict of arrays."""
         m = self.split == name
         return {
             "X_user": self.X_user[m],
@@ -54,6 +61,7 @@ class FeatureSet:
         }
 
     def save(self, directory) -> None:
+        """Write the arrays and fitted objects to a folder (the cache)."""
         d = Path(directory)
         d.mkdir(parents=True, exist_ok=True)
         np.savez(
@@ -66,6 +74,7 @@ class FeatureSet:
 
     @classmethod
     def load(cls, directory) -> "FeatureSet":
+        """Read a FeatureSet back from the cache folder."""
         d = Path(directory)
         a = np.load(d / "arrays.npz")
         extra = joblib.load(d / "artifacts.joblib")

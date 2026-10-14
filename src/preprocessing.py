@@ -1,5 +1,8 @@
 """Feature-cleaning utilities used to build the item feature matrix.
 
+In plain words: Parses messy product size text such as "1.7 oz / 50 mL" into one number of
+millilitres.
+
 Parses the raw `size` strings for src/features/item.py; kept separate so the logic can be
 unit tested on its own.
 """

@@ -1,5 +1,8 @@
 """Is the two-tower really better than each baseline? Paired tests on the test split.
 
+In plain words: Answers "is the neural network really better than each simple baseline, or is it
+just luck?" by running statistical tests on the test reviews.
+
 Reference methods are the baselines (a); the challenger (b) is the PyTorch model.
 Deltas are metric(baseline) - metric(two-tower): positive = the two-tower is better.
 Baseline settings are tuned on val (same as scripts.evaluate); the test split is only scored.
@@ -25,6 +28,9 @@ CHALLENGER = "two-tower (PyTorch)"
 
 
 def main() -> None:
+    """Compare the neural network with every baseline on the test split and write results/ab_test.json
+    and ab_test.md.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default=DEFAULT_CONFIG_PATH)
     parser.add_argument("--model", default="runs/latest/model.pt")
@@ -54,6 +60,7 @@ def main() -> None:
     }
 
     def fmt(r):
+        """Format one comparison (baseline vs neural network) as a row of the output table."""
         ci = lambda k: f"[{r[k][0]:+.4f}, {r[k][1]:+.4f}]"
         return {
             "rmse (baseline)": r["rmse_a"], "rmse (two-tower)": r["rmse_b"],

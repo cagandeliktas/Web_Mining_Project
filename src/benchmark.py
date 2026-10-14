@@ -1,5 +1,8 @@
 """Baselines vs the two-tower on val/test, as one reusable call.
 
+In plain words: Runs every method (all baselines plus the neural network) on validation and test and
+collects the numbers into tables.
+
 Baseline hyper-parameters (shrinkage strengths) are chosen on **val only**;
 the test split is scored once per call, for every method.
 """
@@ -18,6 +21,9 @@ from src.train import predict
 
 
 def _best(candidates: dict, val_df, verbose: bool):
+    """Try several settings and return the one with the lowest validation RMSE (the test set is never
+    used to choose).
+    """
     scored = {n: rmse(val_df["rating"], m.predict(val_df)) for n, m in candidates.items()}
     name = min(scored, key=scored.get)
     if verbose:
@@ -33,6 +39,7 @@ def rating_predictions(fs, model, skip_knn: bool = False, verbose: bool = True) 
     preds = {s: {} for s in parts}
 
     def add(name, m):
+        """Predict the val and test rows with one fitted baseline and store them under `name`."""
         for s, df in parts.items():
             preds[s][name] = m.predict(df)
 
@@ -81,6 +88,7 @@ def run_benchmark(cfg, fs, model, n_rank_sample: int = 20000, skip_knn: bool = F
 
 
 def write_results(results: dict, out_dir) -> None:
+    """Save the tables as results.json (for programs) and results.md (for people) in out_dir."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     (out / "results.json").write_text(json.dumps(

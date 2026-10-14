@@ -1,5 +1,8 @@
 """Everything the API needs at request time, exported once from a trained run.
 
+In plain words: The package of files the API needs: the model, the fitted preprocessing and a ready-
+made snapshot of the product catalogue.
+
 The bundle holds the fitted text/user transforms and the user tower (to embed a
 request), plus a catalog snapshot (item embeddings, item biases, review counts
 and display metadata) computed *as of the last review in the data* with the
@@ -25,6 +28,9 @@ META_COLUMNS = ["product_name", "brand_name", "price_usd", "primary_category"]
 
 @dataclass
 class ServingBundle:
+    """All files the API needs, in memory: model, fitted preprocessing, and the catalogue snapshot
+    (product vectors, offsets, review counts, names).
+    """
     model: TwoTower
     tfidf: object
     svd: object
@@ -38,6 +44,7 @@ class ServingBundle:
     snapshot_day: str
 
     def save(self, directory) -> None:
+        """Write the bundle to a folder (model.pt, preprocess.joblib, catalog.joblib)."""
         d = Path(directory)
         d.mkdir(parents=True, exist_ok=True)
         save_model(self.model, d / "model.pt")
@@ -49,6 +56,7 @@ class ServingBundle:
 
     @classmethod
     def load(cls, directory) -> "ServingBundle":
+        """Read a bundle from a folder; gives a clear error if it was never exported."""
         d = Path(directory)
         if not (d / "model.pt").exists():
             raise FileNotFoundError(

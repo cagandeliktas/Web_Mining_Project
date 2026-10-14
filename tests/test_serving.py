@@ -1,3 +1,6 @@
+"""Tests the API: request features equal training features, fast scoring equals the full model,
+endpoints behave.
+"""
 import numpy as np
 import pandas as pd
 import pytest

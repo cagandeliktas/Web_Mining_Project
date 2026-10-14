@@ -1,5 +1,8 @@
 """Load and clean the raw Sephora reviews into one row per (user, product).
 
+In plain words: Loads the raw review CSVs and cleans them: drops broken user ids, removes duplicate
+scrapes and keeps one row per (user, product) - the user's latest review.
+
 The cleaning rules mirror dbt_project/models/staging/stg_reviews.sql so the
 Python pipeline and the warehouse agree on what a "review" is:
 

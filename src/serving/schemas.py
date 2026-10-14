@@ -1,4 +1,8 @@
-"""Request / response models for the API."""
+"""Request / response models for the API.
+
+In plain words: The exact shape of the requests and responses of the web API (input is validated
+automatically).
+"""
 
 from datetime import datetime
 from typing import Optional
@@ -26,18 +30,23 @@ class ReviewIn(Profile):
 
 
 class UserContext(BaseModel):
+    """What we know about the user: their earlier reviews and an optional profile."""
     reviews: list[ReviewIn] = Field(default_factory=list, max_length=500,
                                     description="The user's earlier reviews; empty for a new/anonymous user.")
     profile: Optional[Profile] = Field(default=None, description="Overrides demographics taken from the reviews.")
 
 
 class RecommendationRequest(UserContext):
+    """Input of POST /recommendations: the user context plus how many results and which products to
+    skip.
+    """
     top_k: int = Field(default=10, ge=1, le=100)
     exclude_product_ids: list[str] = Field(default_factory=list, max_length=5000)
     min_item_reviews: int = Field(default=0, ge=0, description="Skip products with fewer reviews in the snapshot.")
 
 
 class ProductRecommendation(BaseModel):
+    """One recommended product with its name, brand, price, category and predicted rating."""
     product_id: str
     product_name: Optional[str] = None
     brand_name: Optional[str] = None
@@ -47,21 +56,25 @@ class ProductRecommendation(BaseModel):
 
 
 class RecommendationResponse(BaseModel):
+    """Output of POST /recommendations: the list of products and some bookkeeping."""
     n_reviews_used: int
     catalog_snapshot: str
     recommendations: list[ProductRecommendation]
 
 
 class PredictRequest(UserContext):
+    """Input of POST /predict: the user context plus the product to score."""
     product_id: str
 
 
 class PredictResponse(BaseModel):
+    """Output of POST /predict: the predicted rating."""
     product_id: str
     predicted_rating: float
 
 
 class HealthResponse(BaseModel):
+    """Output of GET /health."""
     status: str
     n_products: int
     catalog_snapshot: str

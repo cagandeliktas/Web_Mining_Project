@@ -1,5 +1,8 @@
 """Full-catalog ranking evaluation.
 
+In plain words: Tests how well each method finds the product a user really reviewed among the whole
+catalogue (the "which product next?" question), rather than predicting a rating.
+
 Question: at the moment a user posts a review they liked, how high does a
 method rank *that product* among every product they could have picked?
 
@@ -36,6 +39,9 @@ def rank_of_target(scores: np.ndarray, target: np.ndarray, valid: np.ndarray) ->
 
 
 def ranking_metrics(ranks: np.ndarray, ks) -> dict:
+    """Turn the rank of the true product into: HR@k (was it in the top k?), NDCG@k (higher credit for
+    higher ranks) and MRR (average 1/rank). Higher is better.
+    """
     out = {"mrr": float(np.mean(1.0 / ranks))}
     for k in ks:
         hit = ranks <= k
@@ -48,6 +54,7 @@ class CatalogSnapshots:
     """Per-day item state (prior review count / rating sum / launched?) from strictly earlier reviews."""
 
     def __init__(self, inter: pd.DataFrame):
+        """Sort all reviews by time and remember when each product was first reviewed."""
         order = np.argsort(inter["submission_time"].to_numpy(), kind="stable")
         self.t = inter["submission_time"].to_numpy()[order]
         self.items = np.array(sorted(inter["product_id"].unique()))
