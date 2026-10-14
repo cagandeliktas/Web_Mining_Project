@@ -103,12 +103,43 @@ src/train.py                training loop (AdamW, bias shrinkage, id dropout, va
 src/baselines.py            mean / item / user / bias / as-of / item-kNN baselines
 src/evaluate.py, ranking.py rating metrics by history bucket; full-catalog ranking
 src/benchmark.py            run_benchmark: every method on val/test
+src/serving/                bundle export, request-time features, Recommender, FastAPI app
 scripts/                    thin CLIs over the above
 notebooks/                  calls src/ only (a test fails if a notebook defines functions)
 ```
 
 Run the tests with `pytest -v`. CI (`.github/workflows/tests.yml`) installs the CPU build of torch and runs the same
 suite on every push and pull request against `main`.
+
+## Serving (FastAPI)
+
+The API reuses the training code instead of re-implementing it: a request's reviews are treated as the user's earlier
+history, one "query" row is appended, and the *same* `build_user_asof` + train-fitted transform produce the user vector
+(a test checks it equals the training features for the same user state). Item embeddings, item biases and metadata are
+precomputed into a catalog snapshot, so a request is one small MLP pass plus a matrix-vector product (~30 ms).
+
+```bash
+pip install -r requirements-serving.txt
+python -m scripts.train && python -m scripts.export_serving_bundle    # -> artifacts/serving/ (5 MB)
+uvicorn src.serving.api:app --reload                                  # RECSYS_BUNDLE=<dir> to use another bundle
+```
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | status, number of products, catalog snapshot date |
+| `POST /recommendations` | top-K products by predicted rating for a user (`reviews`, optional `profile`, `top_k`, `exclude_product_ids`, `min_item_reviews`) |
+| `POST /predict` | predicted rating of one `product_id` for that user (404 for an unknown product) |
+
+```bash
+curl -X POST localhost:8000/recommendations -H "Content-Type: application/json" -d '{
+  "reviews": [{"rating": 5, "is_recommended": true, "review_text": "Loved it!", "skin_type": "oily", "product_id": "P420652"}],
+  "profile": {"skin_tone": "medium"}, "top_k": 5, "min_item_reviews": 50}'
+```
+
+An empty `reviews` list is a cold-start user (scored from `profile` and content only). Unseen users get the cold bias
+slot, as in evaluation. **Caveat:** `/recommendations` ranks by predicted *rating*, which the evaluation above shows is a
+weak retrieval signal (it tends to surface niche, highly-rated items; `min_item_reviews` helps). `/predict` is the
+model's stronger use. The bundle is a snapshot as of its export date.
 
 ## Data warehouse (Snowflake + dbt)
 
@@ -132,7 +163,7 @@ Snowflake's UI.
 
 ## Roadmap
 
-- Serve the PyTorch model (FastAPI) using the same fitted transforms and as-of feature code as training.
+- Serving: look up known users by id (their learned bias), refresh the catalog snapshot on a schedule, and rank with a retrieval-trained model.
 - Train for ranking (e.g. in-batch softmax) instead of rating regression; add paired significance tests between methods.
 - Build the dbt layer's user/item aggregates *as of each review* (window functions over earlier rows) before using them as ML features: `dim_users` aggregates over all time, so using it directly would leak.
 

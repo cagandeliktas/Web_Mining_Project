@@ -1,0 +1,5 @@
+# FastAPI service for the PyTorch model (src/serving/). httpx is what FastAPI's TestClient uses.
+-r requirements-torch.txt
+fastapi
+uvicorn[standard]
+httpx
